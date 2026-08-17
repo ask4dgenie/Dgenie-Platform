@@ -1,27 +1,124 @@
 import { myGenieDefinition } from "../src/modules/ai-gateway/my-genie-definition";
+import {
+  discoveryProjectPlaybook,
+  geniusDevelopmentDomain,
+  geniusLevelRubrics,
+} from "../src/modules/curriculum/genius-development-domain";
+import { bootstrapAdministrator, bootstrapMentors } from "../src/modules/identity/mentor-bootstrap";
 import { prisma } from "../src/lib/db/prisma";
 
 /**
- * Phase 0 seed: populate exactly one AgentDefinition row, My Genie's, per
- * Architecture Spec Part Nine. Run via `npm run seed` (wraps `prisma db
- * seed`) once a real DATABASE_URL is reachable -- this build environment had
- * no network path to the Supabase project (see the Phase 0 PR description),
- * so the same content was also applied directly via the Supabase MCP
- * `apply_migration` tool as a one-off data migration
- * (prisma/migrations/20260817120300_seed_my_genie_agent_definition) so the
- * row exists in the live database now. This script is what a future
- * session/CI run should use going forward, and its `upsert` is intentionally
- * idempotent against that already-seeded row (keyed on the same `agentKey`)
- * rather than assuming a bare `create` -- running it against the live
- * database will update the existing row to match this file, not conflict
- * with it.
+ * Phase 0 seed: My Genie's AgentDefinition. See that section's own comment
+ * below for why this and every other seed step here also has a matching
+ * one-off data migration applied directly to the live Supabase project via
+ * the Supabase MCP `apply_migration` tool -- this build environment has no
+ * network path to the database (see the Phase 0 and Phase 1 Slice A PR
+ * descriptions). This script is what a future session/CI run should use
+ * going forward; every step is written as an idempotent upsert against the
+ * same live-seeded rows, not a bare `create` that would conflict with them.
  */
-async function main() {
+async function seedMyGenie() {
   await prisma.agentDefinition.upsert({
     where: { agentKey: myGenieDefinition.agentKey },
     create: myGenieDefinition,
     update: myGenieDefinition,
   });
+}
+
+/**
+ * Phase 1 Slice A seed: Domain Nine (Genius Development), its Discovery
+ * Project playbook, and all twelve Genius Level rubric rows -- the single
+ * domain populated with real content this slice, per the Roadmap's "single
+ * domain, to prove the model" framing. See src/modules/curriculum/genius-
+ * development-domain.ts for the governance citations behind this content.
+ */
+async function seedGeniusDevelopmentDomain() {
+  const domain = await prisma.curriculumDomain.upsert({
+    where: { code_locale: { code: geniusDevelopmentDomain.code, locale: geniusDevelopmentDomain.locale } },
+    create: geniusDevelopmentDomain,
+    update: geniusDevelopmentDomain,
+  });
+
+  await prisma.signatureExperiencePlaybook.upsert({
+    where: {
+      curriculumDomainId_type_locale: {
+        curriculumDomainId: domain.id,
+        type: discoveryProjectPlaybook.type,
+        locale: discoveryProjectPlaybook.locale,
+      },
+    },
+    create: { ...discoveryProjectPlaybook, curriculumDomainId: domain.id },
+    update: { ...discoveryProjectPlaybook, curriculumDomainId: domain.id },
+  });
+
+  for (const rubric of geniusLevelRubrics) {
+    await prisma.geniusLevelRubric.upsert({
+      where: {
+        curriculumDomainId_level_locale: {
+          curriculumDomainId: domain.id,
+          level: rubric.level,
+          locale: "en",
+        },
+      },
+      create: { ...rubric, locale: "en", curriculumDomainId: domain.id },
+      update: { ...rubric, locale: "en", curriculumDomainId: domain.id },
+    });
+  }
+}
+
+/**
+ * Phase 1 Slice A seed: the manually seeded first Mentor cohort. See
+ * src/modules/identity/mentor-bootstrap.ts for why this exists and why it is
+ * explicitly NOT the real New Mentor Certification path.
+ */
+async function seedMentorBootstrap() {
+  const administrator = await prisma.user.upsert({
+    where: { email: bootstrapAdministrator.email },
+    create: { email: bootstrapAdministrator.email, name: bootstrapAdministrator.name },
+    update: {},
+  });
+
+  const existingAdminRole = await prisma.role.findFirst({
+    where: { userId: administrator.id, roleType: "ADMINISTRATOR", validTo: null },
+  });
+  if (!existingAdminRole) {
+    await prisma.role.create({
+      data: {
+        userId: administrator.id,
+        roleType: "ADMINISTRATOR",
+        notes: "Root bootstrap Administrator, self-seeded -- no earlier Administrator exists to grant this.",
+      },
+    });
+  }
+
+  for (const mentor of bootstrapMentors) {
+    const mentorUser = await prisma.user.upsert({
+      where: { email: mentor.email },
+      create: { email: mentor.email, name: mentor.name },
+      update: {},
+    });
+
+    const existingMentorRole = await prisma.role.findFirst({
+      where: { userId: mentorUser.id, roleType: "MENTOR", validTo: null },
+    });
+    if (!existingMentorRole) {
+      await prisma.role.create({
+        data: {
+          userId: mentorUser.id,
+          roleType: "MENTOR",
+          grantedByUserId: administrator.id,
+          notes:
+            "Manually seeded first Mentor cohort (Roadmap Part 5, Phase 1; confirmed by Duncan 2026-08-17) -- not the New Mentor Certification workflow, which is Phase 2 scope.",
+        },
+      });
+    }
+  }
+}
+
+async function main() {
+  await seedMyGenie();
+  await seedGeniusDevelopmentDomain();
+  await seedMentorBootstrap();
 }
 
 main()
