@@ -1,0 +1,413 @@
+// DGENIE Platform — Prisma schema
+//
+// Phase 0 — Foundation only. Per Architecture Spec Part Nine: "identity, the Agent
+// Gateway skeleton (with only My Genie's AgentDefinition populated), the Audit Log,
+// and Row-Level Security policy framework. Nothing user-facing ships in this phase."
+//
+// This file is the versioned source of truth for the schema (Architecture Spec Part
+// Two: "Prisma's schema file is the versioned source of truth in git"). Migrations
+// run via Prisma Migrate against the Supabase Postgres connection string per the
+// Phase 0 kickoff brief's Step 1 ("Migration tool: Prisma Migrate, not Supabase's
+// own migration system").
+//
+// Every model below is annotated with the Architecture Spec Part/Section or
+// Blueprint it implements, per the kickoff brief's "every deliverable, cite its
+// source" instruction.
+
+// Prisma 7: the datasource block no longer carries a connection `url` (that
+// moved to prisma.config.ts, for Migrate/introspection) and PrismaClient now
+// requires an explicit driver adapter at runtime (see src/lib/db/prisma.ts).
+// Confirmed against the actually-installed CLI (`npx prisma validate`),
+// 2026-08-17 — this is a genuine 7.x breaking change from the Prisma 5/6
+// pattern most training data and even some current doc-search results still
+// show, so it's checked against the installed binary's own error message,
+// not assumed.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITY MODULE
+// Architecture Spec Part Three: "Identity System -> `identity` -- Accounts, roles,
+// parent-minor linkage, session management."
+// Architecture Spec Part Four, "Identity module": User, Role, ParentLink.
+// ---------------------------------------------------------------------------
+
+/// One row per person, regardless of role. Architecture Spec Part Four: "a person
+/// can hold more than one role over a lifetime, per the nine-stage Lifelong
+/// Membership Journey." Auth.js (NextAuth) fields (email, emailVerified, image)
+/// live on this same model per the Prisma-adapter convention, self-hosted against
+/// this Postgres instance per Part Two's vendor-independence reasoning.
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
+  name          String?
+  image         String?
+
+  /// Captured at New Learner Onboarding (Architecture Spec Part Seven, Workflow 1)
+  /// and drives every downstream age-gating decision, including My Genie's
+  /// age-five capability floor (Part Five) and the four Deployment circles named
+  /// in the Hybrid Talent Deployment Framework. Nullable because not every User
+  /// (e.g. a Mentor or Administrator account) requires one at creation.
+  dateOfBirth DateTime? @map("date_of_birth")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  accounts Account[]
+  sessions Session[]
+
+  roles        Role[] @relation("UserRoles")
+  rolesGranted Role[] @relation("RoleGrantedBy")
+
+  parentLinksAsParent ParentLink[] @relation("ParentLinkParent")
+  parentLinksAsMinor  ParentLink[] @relation("ParentLinkMinor")
+
+  agentInteractions AgentInteraction[]
+
+  auditLogEntriesAsActor  AuditLogEntry[] @relation("AuditActor")
+  auditLogEntriesAsTarget AuditLogEntry[] @relation("AuditTarget")
+
+  @@map("users")
+}
+
+/// Standard Auth.js (NextAuth) v5 Prisma-adapter model, current schema per
+/// https://authjs.dev/getting-started/adapters/prisma (checked via Context7,
+/// 2026-08-17, per Build Tooling and Connector Protocol's standing instruction
+/// not to write against training-data recall for framework-specific setup).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+/// Auth.js (NextAuth) v5 Prisma-adapter model. See Account's doc comment.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+/// Auth.js (NextAuth) v5 Prisma-adapter model. See Account's doc comment.
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+/// The fifteen human roles named in Blueprint 08 Part Four, Section Five (Human
+/// Architecture): Learner, Parent, Teacher, Learning Coach, Mentor, Community
+/// Mentor, Administrator, Curriculum Architect, Assessment Architect, Platform
+/// Architect, Founder, Volunteer, Industry Expert, Alumni, Community Partner.
+/// A string-keyed enum, not a free-text field, so an invalid role assignment is a
+/// schema-level impossibility, not an application-layer check that can be
+/// forgotten (Architecture Spec Part Six's "deliberate redundancy" principle
+/// applied one layer earlier than RLS).
+enum RoleType {
+  LEARNER
+  PARENT
+  TEACHER
+  LEARNING_COACH
+  MENTOR
+  COMMUNITY_MENTOR
+  ADMINISTRATOR
+  CURRICULUM_ARCHITECT
+  ASSESSMENT_ARCHITECT
+  PLATFORM_ARCHITECT
+  FOUNDER
+  VOLUNTEER
+  INDUSTRY_EXPERT
+  ALUMNI
+  COMMUNITY_PARTNER
+}
+
+/// A typed assignment of a User to one of the fifteen roles, WITH a validity
+/// window from day one. Architecture Spec Part Four: "a person's role changes
+/// over time"; kickoff brief Step 2.1: "build this to support role change from
+/// day one ... retrofitting this later is exactly the mistake Part Nine's
+/// phasing exists to prevent." `validTo = null` means the assignment is
+/// currently active; a closed window is kept as history, never deleted or
+/// overwritten, so a person's full role history (Learner -> Contributor ->
+/// Mentor, per Blueprint 08 Part Four Section Three's nine-stage journey) is
+/// reconstructable from this table alone.
+///
+/// Forward-compatibility note (Phase 0 kickoff brief, "role-model-future-
+/// proofing" task): this model's own `id` is a stable primary key a future
+/// `PaymentTransaction` (billing module) or `MentorPayoutCalculation`
+/// (compensation module) can foreign-key onto in Phase 1 without a breaking
+/// change to this table -- see Architecture Spec Part Four's Billing/
+/// Compensation module notes and the Twelfth revision note.
+model Role {
+  id       String   @id @default(cuid())
+  userId   String   @map("user_id")
+  roleType RoleType @map("role_type")
+
+  validFrom DateTime  @default(now()) @map("valid_from")
+  validTo   DateTime? @map("valid_to")
+
+  /// The Administrator or Founder User who granted this assignment, per
+  /// Architecture Spec Part Seven Workflow 6 (New Mentor Certification) and
+  /// Workflow 1 (New Learner Onboarding, "An Administrator ... assigns a first
+  /// Mentor"). Nullable to allow a Phase-0-era seed/bootstrap grant with no
+  /// granting User yet on file.
+  grantedByUserId String? @map("granted_by_user_id")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user        User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy   User? @relation("RoleGrantedBy", fields: [grantedByUserId], references: [id])
+
+  agentInteractions AgentInteraction[]
+
+  @@index([userId, roleType])
+  @@index([roleType, validTo])
+  @@map("roles")
+}
+
+/// The consent and recovery relationship between a minor's User and a parent's
+/// User, per Blueprint 12 (Parent and Family Framework) Section Three's parent
+/// rights and Architecture Spec Part Two's Auth.js justification: "a parent
+/// holds recovery and consent authority over a minor's account without holding
+/// the account itself." A row existing and `revokedAt` null is the platform's
+/// record that this parent currently holds that authority over that minor's
+/// account; it does not itself store which specific rights are exercised where
+/// (transparent Portfolio access, safeguarding notification, etc. -- those are
+/// enforced per-table against this relationship in later phases, per Blueprint
+/// 08 Part Four Section Nine's Information Architecture table).
+model ParentLink {
+  id String @id @default(cuid())
+
+  parentUserId String @map("parent_user_id")
+  minorUserId  String @map("minor_user_id")
+
+  consentGrantedAt DateTime  @default(now()) @map("consent_granted_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parent User @relation("ParentLinkParent", fields: [parentUserId], references: [id], onDelete: Cascade)
+  minor  User @relation("ParentLinkMinor", fields: [minorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([parentUserId, minorUserId])
+  @@map("parent_links")
+}
+
+// ---------------------------------------------------------------------------
+// AI GATEWAY MODULE (SKELETON)
+// Architecture Spec Part Three: "AI Engine -> `ai-gateway` -- Hosts and governs
+// every agent named in Blueprint 14 Section Four; see Part Five."
+// Architecture Spec Part Five: the Agent Gateway pattern. Part Nine: "the Agent
+// Gateway skeleton (with only My Genie's AgentDefinition populated) ... No
+// working conversation, no live LLM calls yet."
+// ---------------------------------------------------------------------------
+
+/// One row per agent named in Blueprint 14 Section Four (sixteen agents total).
+/// Phase 0 populates exactly one real row, My Genie (Blueprint 14 Section Four,
+/// Agent One) -- every other agent is out of scope per the kickoff brief's
+/// explicit non-goals. The gateway's four core responsibilities (Architecture
+/// Spec Part Five) read from this row rather than a hardcoded per-agent
+/// integration: resolving the AgentDefinition, assembling context only from
+/// `dataScope`, exposing only `toolAllowlist`, and writing an AgentInteraction.
+/// A boundary like "certification remains the Mentor's" is enforced by simply
+/// never listing a certifying action in `toolAllowlist` -- a property of this
+/// row's data, testable in a unit test, not a prompt instruction trusted to
+/// hold.
+model AgentDefinition {
+  id     String @id @default(cuid())
+  agentKey String @unique @map("agent_key")
+  name   String
+
+  /// Blueprint 14 Section Four's "Purpose" field, reproduced verbatim from
+  /// Blueprint 08 Part Four Section Six per that Section's own note.
+  purpose String @db.Text
+
+  /// Blueprint 14 Section Four's "Human relationship" field -- which human
+  /// relationship this agent augments, never replaces.
+  humanRelationship String @map("human_relationship")
+
+  /// Blueprint 14 Section Four's "Boundaries" field, made operational: the
+  /// literal system prompt sent to the model. The boundary text itself still
+  /// matters here (defense in depth alongside the tool allowlist below,
+  /// per Architecture Spec Part Six), but Part Five is explicit that a boundary
+  /// is enforced by what the gateway does NOT expose via `toolAllowlist`, not
+  /// by trusting this text to be obeyed.
+  systemPrompt String @map("system_prompt") @db.Text
+
+  /// The tools this agent's Blueprint 14 boundary permits it to call. A
+  /// certifying action (e.g. a hypothetical `certify_genius_level`) simply
+  /// never appears here for any agent -- Architecture Spec Part Five: "the
+  /// boundary is enforced by what the gateway does not expose, not by an
+  /// instruction the model is trusted to obey." Empty in Phase 0 for My Genie,
+  /// since no live tool-calling integration exists yet (Part Nine non-goal).
+  toolAllowlist String[] @map("tool_allowlist")
+
+  /// Blueprint 14 Section Four's "Data access" field, structured: which data
+  /// sources this agent's context assembly may query. Architecture Spec Part
+  /// Five: "assembling that agent's context from only the data sources
+  /// Blueprint 14 Section Four names for it, never a broader query the calling
+  /// module might otherwise have access to."
+  dataScope Json @map("data_scope")
+
+  /// A model identifier, not a hardcoded model call -- Architecture Spec Part
+  /// Five's "Model provider independence": "replacing the underlying model ...
+  /// is a configuration change ... not a rewrite of every agent's integration
+  /// code."
+  modelIdentifier String @map("model_identifier")
+
+  /// Architecture Spec Part Five, "A capability floor beneath the age of five":
+  /// for My Genie specifically, live speech-to-text input and real-time voice
+  /// synthesis are gated on learner age "at the AgentDefinition level ...
+  /// enforced ... by what the gateway does not expose, not by a prompt
+  /// instruction." Null means no floor applies to this agent. This column is
+  /// the structural hook Phase 1's actual gateway logic will read; Phase 0
+  /// only needs the column to exist and be populated correctly on My Genie's
+  /// row, since Phase 1 builds the pipeline the floor gates.
+  minimumLearnerAge Int? @map("minimum_learner_age")
+
+  /// Phase 0: a configuration record, not a live integration (Part Nine).
+  /// Deliberately defaulted to false -- flipping this on is a Phase 1 decision,
+  /// not implied by this row existing.
+  isActive Boolean @default(false) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  interactions AgentInteraction[]
+
+  @@map("agent_definitions")
+}
+
+/// Every single gateway call, logged -- Architecture Spec Part Four: "every
+/// single call, logged, feeding the Audit Log in Part Ten." Part Five: "writing
+/// a complete, immutable AgentInteraction record before returning a response"
+/// is one of the gateway's four core responsibilities. Phase 0 creates this
+/// table as a skeleton only (Part Nine); no code path writes to it yet, since
+/// no live LLM call exists in this phase.
+model AgentInteraction {
+  id String @id @default(cuid())
+
+  agentDefinitionId String @map("agent_definition_id")
+
+  /// Architecture Spec Part Six: "AI agents are not a role ... every data
+  /// access an agent makes is performed on behalf of a specific human's
+  /// session." This is that human.
+  userId String @map("user_id")
+
+  /// The Role active at call time. Part Six: "every access check resolves the
+  /// current, valid Role record at request time," not a cached claim -- this
+  /// column records which one was actually current when the call was made.
+  actingRoleId String? @map("acting_role_id")
+
+  requestText  String? @map("request_text") @db.Text
+  responseText String? @map("response_text") @db.Text
+  toolCalls    Json?   @map("tool_calls")
+
+  /// Architecture Spec Part Five: "Escalation is a first-class gateway
+  /// behavior ... a shared escalate() capability every relevant
+  /// AgentDefinition can invoke." Recorded here so an escalated interaction is
+  /// findable without a separate reconciliation step.
+  escalated Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agentDefinition AgentDefinition @relation(fields: [agentDefinitionId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+  actingRole      Role?           @relation(fields: [actingRoleId], references: [id])
+
+  auditLogEntry AuditLogEntry?
+
+  @@index([userId])
+  @@index([agentDefinitionId])
+  @@map("agent_interactions")
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG
+// Architecture Spec Part Ten and Part Eight: "append-only at the database
+// level -- no UPDATE or DELETE grant on this table for any application role
+// ... so that an audit trail cannot be quietly edited even by a compromised
+// application credential." Part Ten: "the shared evidentiary base for both the
+// Chief Safeguarding Officer's safeguarding audits and the Oversight Body's
+// independent ... review," both reading "the same evidence the platform
+// actually generated."
+// ---------------------------------------------------------------------------
+
+/// What kind of event produced this entry. AGENT_INTERACTION is the only kind
+/// Phase 0's code can actually produce (and won't yet, since no live gateway
+/// call exists); the remaining values are named now so the table's shape does
+/// not need a breaking migration when Phase 1's workflows start writing to it
+/// (e.g. CERTIFICATION_DECISION, once `CertificationRecord` exists).
+enum AuditEventType {
+  AGENT_INTERACTION
+  ROLE_GRANTED
+  ROLE_REVOKED
+  PARENT_LINK_CREATED
+  PARENT_LINK_REVOKED
+  CERTIFICATION_DECISION
+}
+
+/// The append-only record itself. No `updatedAt` field exists on this model,
+/// deliberately -- there is no application code path that should ever revise
+/// an entry, and the corresponding Postgres grants (in the accompanying
+/// migration SQL) remove UPDATE and DELETE for the application role entirely,
+/// enforced at the database level per Part Eight, not only by this model's own
+/// shape.
+model AuditLogEntry {
+  id        String         @id @default(cuid())
+  eventType AuditEventType @map("event_type")
+
+  /// The human whose action or session produced this entry. Nullable only for
+  /// a genuinely system-originated event (there are none yet in Phase 0).
+  actorUserId String? @map("actor_user_id")
+
+  /// Whose record this entry concerns -- e.g. the learner an AgentInteraction
+  /// or a future CertificationRecord was about.
+  targetUserId String? @map("target_user_id")
+
+  agentInteractionId String? @unique @map("agent_interaction_id")
+
+  summary  String @db.Text
+  metadata Json?
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  actor  User? @relation("AuditActor", fields: [actorUserId], references: [id])
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id])
+
+  agentInteraction AgentInteraction? @relation(fields: [agentInteractionId], references: [id])
+
+  @@index([targetUserId])
+  @@index([eventType])
+  @@map("audit_log_entries")
+}
