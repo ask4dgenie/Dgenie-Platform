@@ -1,75 +1,80 @@
 {
   "vault": "DGENIE MODEL SCHOOLS",
-  "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 — this manifest is a status board over that governance, never the other way around",
-  "lastMeaningfulUpdate": "2026-08-16",
+  "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 \u2014 this manifest is a status board over that governance, never the other way around",
+  "lastMeaningfulUpdate": "2026-08-17",
   "updateInstructions": "Edit only the \"status\" (and optionally \"note\") field on a task when real work happens. Valid statuses: not-started, in-progress, complete, blocked. Do not add, remove, or reorder tasks without checking them against the governing documents first. The server re-reads this file on every request, so a saved edit shows up the next time the dashboard polls, no restart needed.",
   "phases": [
     {
       "id": "phase-0",
-      "name": "Phase 0 — Foundation",
+      "name": "Phase 0 \u2014 Foundation",
       "summary": "Nothing user-facing ships. Everything after this phase depends on it being solid.",
       "tasks": [
         {
           "id": "identity-module",
-          "label": "`identity` module — User, Role (with validity window), ParentLink",
-          "status": "not-started"
+          "label": "`identity` module \u2014 User, Role (with validity window), ParentLink",
+          "status": "complete",
+          "note": "Schema + migration applied to the live Supabase project (aqjolmpixjjrboxxderv); Auth.js wired against the same tables. See apps/web/prisma/schema.prisma and the Phase 0 PR."
         },
         {
           "id": "agent-gateway-skeleton",
-          "label": "Agent Gateway skeleton — AgentDefinition, AgentInteraction (skeleton only); only My Genie's AgentDefinition populated",
-          "status": "not-started"
+          "label": "Agent Gateway skeleton \u2014 AgentDefinition, AgentInteraction (skeleton only); only My Genie's AgentDefinition populated",
+          "status": "complete",
+          "note": "Tables created; My Genie's AgentDefinition row seeded and verified live (isActive: false, empty tool_allowlist, minimum_learner_age: 5). No live calls, per Part Nine."
         },
         {
           "id": "audit-log",
-          "label": "Audit Log — append-only at the database level, no UPDATE/DELETE grant for any application role",
-          "status": "not-started"
+          "label": "Audit Log \u2014 append-only at the database level, no UPDATE/DELETE grant for any application role",
+          "status": "complete",
+          "note": "audit_log_entries table live; verified via information_schema.role_table_grants that dgenie_app holds only SELECT and INSERT, no UPDATE/DELETE."
         },
         {
           "id": "rls-framework",
           "label": "Row-Level Security policy framework",
-          "status": "not-started"
+          "status": "complete",
+          "note": "RLS + FORCE RLS enabled on all 9 Phase 0 tables with real policies; Supabase security advisors clean (one function_search_path_mutable finding raised and fixed). See apps/web/prisma/migrations/2026081712* for the full history including the users-table service-policy correction."
         },
         {
           "id": "blueprints-sync-script",
-          "label": "`BLUEPRINTS/` mirror sync script (copies the 15 canonical GOVERNANCE DOCUMENTS files) — can be authored here even though the page it feeds ships later",
-          "status": "not-started"
+          "label": "`BLUEPRINTS/` mirror sync script (copies the 15 canonical GOVERNANCE DOCUMENTS files) \u2014 can be authored here even though the page it feeds ships later",
+          "status": "complete",
+          "note": "scripts/sync-blueprints.mjs + root `npm run sync:blueprints`; run and verified: 15/15 files copied into BLUEPRINTS/."
         },
         {
           "id": "role-model-future-proofing",
           "label": "Role/User schema anticipates billing and compensation keying off it later (avoid a Phase 1 retrofit)",
-          "status": "not-started",
-          "note": "Added 2026-08-16 alongside the billing/compensation module ratification."
+          "status": "complete",
+          "note": "Added 2026-08-16 alongside the billing/compensation module ratification. Role has its own stable id a future PaymentTransaction/MentorPayoutCalculation can foreign-key onto without a breaking change; see the doc comment on the Role model in schema.prisma."
         }
       ]
     },
     {
       "id": "phase-1",
-      "name": "Phase 1 — MVP Core Loop",
+      "name": "Phase 1 \u2014 MVP Core Loop",
       "summary": "The smallest slice that lets one real learner, one real Mentor, and one real Parent complete a genuine, evidenced Genius Cycle end to end.",
       "tasks": [
         {
           "id": "learning-module",
-          "label": "`learning` module — GeniusCycleSession state machine (seven movements + Recovery Cycle)",
+          "label": "`learning` module \u2014 GeniusCycleSession state machine (seven movements + Recovery Cycle)",
           "status": "not-started"
         },
         {
           "id": "curriculum-module",
-          "label": "`curriculum` module — single domain, locale-first (CurriculumDomain, SignatureExperiencePlaybook)",
+          "label": "`curriculum` module \u2014 single domain, locale-first (CurriculumDomain, SignatureExperiencePlaybook)",
           "status": "not-started"
         },
         {
           "id": "portfolio-module",
-          "label": "`portfolio` module — PortfolioEntry, LifePortfolioSnapshot",
+          "label": "`portfolio` module \u2014 PortfolioEntry, LifePortfolioSnapshot",
           "status": "not-started"
         },
         {
           "id": "assessment-module",
-          "label": "`assessment` module — GeniusLevelRubric, CertificationRecord",
+          "label": "`assessment` module \u2014 GeniusLevelRubric, CertificationRecord",
           "status": "not-started"
         },
         {
           "id": "my-genie-full-pipeline",
-          "label": "My Genie full pipeline — 3D avatar, one permanent voice, speech-to-text input, age-five capability floor enforced at the AgentDefinition level",
+          "label": "My Genie full pipeline \u2014 3D avatar, one permanent voice, speech-to-text input, age-five capability floor enforced at the AgentDefinition level",
           "status": "not-started"
         },
         {
@@ -79,14 +84,14 @@
         },
         {
           "id": "messaging-slice-mentor-sessions",
-          "label": "Narrow `messaging` slice — video/voice session tool + MentorSessionTranscript (pulled forward for Weekly Reflection)",
+          "label": "Narrow `messaging` slice \u2014 video/voice session tool + MentorSessionTranscript (pulled forward for Weekly Reflection)",
           "status": "not-started"
         },
         {
           "id": "workflow-new-learner-onboarding",
           "label": "New Learner Onboarding workflow, including a manually seeded first Mentor cohort (bootstrap, mirrors the Council/Oversight Body precedent)",
           "status": "not-started",
-          "note": "Recommendation, not yet confirmed by Duncan — see roadmap Part 6."
+          "note": "Recommendation, not yet confirmed by Duncan \u2014 see roadmap Part 6."
         },
         {
           "id": "workflow-daily-learning",
@@ -110,13 +115,13 @@
         },
         {
           "id": "billing-module",
-          "label": "`billing` module — Subscription, Invoice, PaymentMethod, PaymentTransaction (PSP-coupled)",
+          "label": "`billing` module \u2014 Subscription, Invoice, PaymentMethod, PaymentTransaction (PSP-coupled)",
           "status": "not-started",
           "note": "Ratified 2026-08-16. Untestable until a PSP vendor is chosen and the subscription price is set."
         },
         {
           "id": "compensation-module",
-          "label": "`compensation` module — MentorPayoutCalculation, ScholarshipAllocation (no FK to MentorCaseloadView)",
+          "label": "`compensation` module \u2014 MentorPayoutCalculation, ScholarshipAllocation (no FK to MentorCaseloadView)",
           "status": "not-started",
           "note": "Ratified 2026-08-16. Untestable until the subscription price is set."
         },
@@ -129,22 +134,22 @@
     },
     {
       "id": "phase-2",
-      "name": "Phase 2 — Community and Family",
+      "name": "Phase 2 \u2014 Community and Family",
       "summary": "Blueprint 04's Two-Track cadence and Blueprint 06's seven pillars of community become real rather than theoretical.",
       "tasks": [
         {
           "id": "community-module",
-          "label": "`community` module — Circle, Regional, National, Global membership",
+          "label": "`community` module \u2014 Circle, Regional, National, Global membership",
           "status": "not-started"
         },
         {
           "id": "messaging-remainder",
-          "label": "Remainder of `messaging` — day-to-day async text",
+          "label": "Remainder of `messaging` \u2014 day-to-day async text",
           "status": "not-started"
         },
         {
           "id": "events-module",
-          "label": "`events` module — Morning Spark, Circle Time, Recognition Night, Gatherings",
+          "label": "`events` module \u2014 Morning Spark, Circle Time, Recognition Night, Gatherings",
           "status": "not-started"
         },
         {
@@ -169,7 +174,7 @@
         },
         {
           "id": "control-tower-partial",
-          "label": "Partial Mentor Control Tower — caseload count + session-frequency signals only",
+          "label": "Partial Mentor Control Tower \u2014 caseload count + session-frequency signals only",
           "status": "not-started"
         },
         {
@@ -181,12 +186,12 @@
     },
     {
       "id": "phase-3",
-      "name": "Phase 3 — Deployment, Contribution, and the Wider Agent Ecosystem",
+      "name": "Phase 3 \u2014 Deployment, Contribution, and the Wider Agent Ecosystem",
       "summary": "Safeguarding Escalation is release-blocking no later than this phase.",
       "tasks": [
         {
           "id": "projects-module",
-          "label": "`projects` module — Project, Milestone, DefenseRecord",
+          "label": "`projects` module \u2014 Project, Milestone, DefenseRecord",
           "status": "not-started"
         },
         {
@@ -196,7 +201,7 @@
         },
         {
           "id": "archive-module",
-          "label": "`archive` module — Masterpiece Archive",
+          "label": "`archive` module \u2014 Masterpiece Archive",
           "status": "not-started"
         },
         {
@@ -221,7 +226,7 @@
         },
         {
           "id": "workflow-safeguarding-escalation",
-          "label": "Safeguarding Escalation workflow — release-blocking gate, no cohort old enough for Deployment circles ships without it",
+          "label": "Safeguarding Escalation workflow \u2014 release-blocking gate, no cohort old enough for Deployment circles ships without it",
           "status": "not-started"
         },
         {
@@ -231,24 +236,24 @@
         },
         {
           "id": "elder-genie-test-transition",
-          "label": "Elder Genie continuity test case — GenieMemory survives a Learner-to-Contributor role transition",
+          "label": "Elder Genie continuity test case \u2014 GenieMemory survives a Learner-to-Contributor role transition",
           "status": "not-started"
         }
       ]
     },
     {
       "id": "phase-4",
-      "name": "Phase 4 — Governance, Oversight, and Institutional Memory",
+      "name": "Phase 4 \u2014 Governance, Oversight, and Institutional Memory",
       "summary": "Gives the Board of Stewards, Constitutional Council, and Oversight Body their own tooling.",
       "tasks": [
         {
           "id": "governance-module",
-          "label": "`governance` module — Board records, Council review queue, amendment tracking",
+          "label": "`governance` module \u2014 Board records, Council review queue, amendment tracking",
           "status": "not-started"
         },
         {
           "id": "oversight-module",
-          "label": "`oversight` module — independent audit and investigation tooling",
+          "label": "`oversight` module \u2014 independent audit and investigation tooling",
           "status": "not-started"
         },
         {
@@ -258,24 +263,24 @@
         },
         {
           "id": "legacy-module",
-          "label": "`legacy` module — Alumni, Mentor, Legacy Steward ongoing story",
+          "label": "`legacy` module \u2014 Alumni, Mentor, Legacy Steward ongoing story",
           "status": "not-started"
         },
         {
           "id": "control-tower-full",
-          "label": "Full Mentor Control Tower — AuditFinding signal added",
+          "label": "Full Mentor Control Tower \u2014 AuditFinding signal added",
           "status": "not-started"
         },
         {
           "id": "elder-genie-test-legacy",
-          "label": "Elder Genie continuity test case #2 — Legacy Induction",
+          "label": "Elder Genie continuity test case #2 \u2014 Legacy Induction",
           "status": "not-started"
         }
       ]
     },
     {
       "id": "phase-5",
-      "name": "Phase 5 — Expansion",
+      "name": "Phase 5 \u2014 Expansion",
       "summary": "Expansion beyond the first two languages, the nine expansion contexts, and infrastructure extraction if genuine scale requires it.",
       "tasks": [
         {
@@ -310,7 +315,7 @@
     {
       "id": "scholarship-pool-reading",
       "label": "The 10%-scholarship-pool reading is unconfirmed.",
-      "detail": "Read as implementing the existing constitutional 10%-of-net-revenue floor via a per-transaction earmark, not a separate obligation — flagged for Duncan twice, still not confirmed."
+      "detail": "Read as implementing the existing constitutional 10%-of-net-revenue floor via a per-transaction earmark, not a separate obligation \u2014 flagged for Duncan twice, still not confirmed."
     },
     {
       "id": "caseload-track-split",
@@ -330,7 +335,7 @@
     {
       "id": "three-missing-tech-specs",
       "label": "Three named Technical Specifications don't exist yet.",
-      "detail": "AI Governance Technical Compliance Specification, full Data Model Reference, API and Integration Reference — all named High priority in the Architecture Spec's own Recommendations table."
+      "detail": "AI Governance Technical Compliance Specification, full Data Model Reference, API and Integration Reference \u2014 all named High priority in the Architecture Spec's own Recommendations table."
     },
     {
       "id": "devils-advocate-m3-m6-m8",

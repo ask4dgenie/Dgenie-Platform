@@ -1,0 +1,13 @@
+{
+  "name": "dgenie-platform",
+  "private": true,
+  "description": "DGENIE Model Schools platform",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "sync:blueprints": "node scripts/sync-blueprints.mjs",
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web"
+  }
+}
