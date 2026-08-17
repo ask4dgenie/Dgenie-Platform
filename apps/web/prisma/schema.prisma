@@ -56,6 +56,19 @@ model User {
   /// (e.g. a Mentor or Administrator account) requires one at creation.
   dateOfBirth DateTime? @map("date_of_birth")
 
+  /// Home or Membership, per Blueprint 04 Part Five. Captured at onboarding;
+  /// see the `Track` enum's own doc comment for why this lives on `User`
+  /// directly.
+  track Track? @map("track")
+
+  /// New Learner Onboarding's own text requires assigning a Local Learning
+  /// Circle, but `community` (the module that would provide a real Circle to
+  /// reference) doesn't ship until Phase 2 -- Roadmap Part 5's first
+  /// "sequencing wrinkle." Left as a bare nullable id (no FK yet; there is no
+  /// `circles` table to reference) rather than pulling `community` forward
+  /// for one field, populated once Phase 2's `community` module ships.
+  circleId String? @map("circle_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -72,6 +85,20 @@ model User {
 
   auditLogEntriesAsActor  AuditLogEntry[] @relation("AuditActor")
   auditLogEntriesAsTarget AuditLogEntry[] @relation("AuditTarget")
+
+  mentorAssignmentsAsLearner  MentorAssignment[] @relation("MentorAssignmentLearner")
+  mentorAssignmentsAsAssignor MentorAssignment[] @relation("MentorAssignmentAssignedBy")
+
+  mentorSessionTranscriptsAsLearner MentorSessionTranscript[] @relation("MentorSessionTranscriptLearner")
+
+  portfolioEntries       PortfolioEntry[]        @relation("PortfolioEntryLearner")
+  lifePortfolioSnapshots LifePortfolioSnapshot[] @relation("LifePortfolioSnapshotLearner")
+  geniusCycleSessions    GeniusCycleSession[]    @relation("GeniusCycleSessionLearner")
+
+  certificationRecordsAsLearner   CertificationRecord[] @relation("CertificationRecordLearner")
+  certificationRecordsAsCertifier CertificationRecord[] @relation("CertificationRecordCertifiedBy")
+
+  genieMemory GenieMemory? @relation("GenieMemoryLearner")
 
   @@map("users")
 }
@@ -184,10 +211,14 @@ model Role {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user        User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
-  grantedBy   User? @relation("RoleGrantedBy", fields: [grantedByUserId], references: [id])
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedByUserId], references: [id])
 
   agentInteractions AgentInteraction[]
+
+  mentorAssignments             MentorAssignment[]        @relation("MentorAssignmentMentorRole")
+  mentorSessionTranscripts      MentorSessionTranscript[] @relation("MentorSessionTranscriptMentorRole")
+  certificationRecordsCertified CertificationRecord[]     @relation("CertificationRecordCertifiedByRole")
 
   @@index([userId, roleType])
   @@index([roleType, validTo])
@@ -223,6 +254,550 @@ model ParentLink {
   @@map("parent_links")
 }
 
+/// Home or Membership, per Blueprint 04 Part Five's Two-Track Delivery Model.
+/// Captured at New Learner Onboarding (Architecture Spec Part Seven, Workflow
+/// 1: "Track selection ... sets the cadence defaults used throughout
+/// `learning` and `messaging`"). Lives directly on `User`, following the same
+/// pattern `dateOfBirth` already established in Phase 0 -- a learner-specific
+/// optional attribute on the one identity table, not a parallel profile
+/// table, per this prompt's own "same conventions, not a parallel style"
+/// instruction.
+enum Track {
+  HOME
+  MEMBERSHIP
+}
+
+/// One row per run of a scheduled Mentor-learner cadence session (Weekly
+/// Reflection's check-in, Architecture Spec Part Seven Workflow 3; Blueprint
+/// 04 Part Thirteen). Architecture Spec Part Four: "the transcript text
+/// produced by the same speech-to-text pipeline named in Part Two, session
+/// date and duration, and the Role records of the two participants; no
+/// reference to raw audio or video exists on this table or anywhere else."
+///
+/// This slice deliberately builds only the scheduling/completion shell and
+/// this table -- per this prompt's own "Note for Claude Code," the live
+/// WebRTC call tool is deferred pending a vendor decision (Roadmap Part 6),
+/// the same "skeleton now, live integration later" pattern Phase 0 used for
+/// the Agent Gateway. `transcriptText` stays null until that future work
+/// wires in the real speech-to-text pipeline; nothing in this slice writes
+/// to it.
+enum MentorSessionStatus {
+  SCHEDULED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+model MentorSessionTranscript {
+  id String @id @default(cuid())
+
+  learnerUserId String @map("learner_user_id")
+  mentorRoleId  String @map("mentor_role_id")
+
+  status MentorSessionStatus @default(SCHEDULED) @map("status")
+
+  scheduledFor    DateTime  @map("scheduled_for")
+  completedAt     DateTime? @map("completed_at")
+  durationMinutes Int?      @map("duration_minutes")
+
+  /// Never populated by this slice -- see the model doc comment above.
+  transcriptText String? @map("transcript_text") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner    User @relation("MentorSessionTranscriptLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  mentorRole Role @relation("MentorSessionTranscriptMentorRole", fields: [mentorRoleId], references: [id])
+
+  @@index([learnerUserId])
+  @@index([mentorRoleId])
+  @@map("mentor_session_transcripts")
+}
+
+/// Architecture Spec Part Seven Workflow 1: an Administrator "assigns a first
+/// Mentor from available caseload capacity." Modeled with the same
+/// validity-window discipline Phase 0 already applied to `Role` (`validFrom`/
+/// `validTo`, never overwritten, a closed window kept as history) rather than
+/// a plain mutable foreign key on the learner's record -- Blueprint 11's
+/// five-year Mentor rotation (Phase 2+ operational workflow, per the Roadmap)
+/// will need to reassign a learner to a new Mentor without losing the record
+/// of who held that relationship before, and getting this right now avoids
+/// exactly the retrofit Phase 0's own "get the data model right before the
+/// feature" note warned against.
+///
+/// The Mentor caseload ceiling (Blueprint 11: twenty learners, combined
+/// across both tracks) is enforced as a hard check at the point a new row is
+/// inserted here -- both in application code (src/modules/identity/mentor-
+/// assignment.ts) and, per Architecture Spec Part Six's "two layers, not
+/// one," at the database layer itself: see the `mentor_assignments_insert_
+/// ceiling` RLS policy in the accompanying migration, which counts existing
+/// active assignments for the target Mentor's Role and refuses the insert at
+/// twenty. This is a headcount query, not a payment calculation -- it does
+/// not require and is not gated on the `compensation` module.
+model MentorAssignment {
+  id String @id @default(cuid())
+
+  learnerUserId String @map("learner_user_id")
+  mentorRoleId  String @map("mentor_role_id")
+
+  /// The Administrator who made the assignment, per Workflow 1's own text.
+  assignedByUserId String? @map("assigned_by_user_id")
+
+  validFrom DateTime  @default(now()) @map("valid_from")
+  validTo   DateTime? @map("valid_to")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner    User  @relation("MentorAssignmentLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  mentorRole Role  @relation("MentorAssignmentMentorRole", fields: [mentorRoleId], references: [id])
+  assignedBy User? @relation("MentorAssignmentAssignedBy", fields: [assignedByUserId], references: [id])
+
+  @@index([learnerUserId, validTo])
+  @@index([mentorRoleId, validTo])
+  @@map("mentor_assignments")
+}
+
+// ---------------------------------------------------------------------------
+// PORTFOLIO MODULE
+// Architecture Spec Part Three: "Portfolio Engine -> `portfolio` -- Assembles
+// the Genius Portfolio and Life Portfolio from every other module's
+// evidence." Part Four: "PortfolioEntry (the atomic unit of evidence -- one
+// reflection, one submitted artifact, one certified milestone -- every other
+// module writes into this table, never around it), LifePortfolioSnapshot (a
+// versioned, exportable compilation ...)."
+//
+// Built first among this slice's new modules, per this prompt's own
+// instruction: `learning` and `assessment` both write into `PortfolioEntry`
+// rather than around it.
+// ---------------------------------------------------------------------------
+
+/// The three evidence kinds Part Four's own line names by example, plus a
+/// fourth Blueprint 04 Part Fourteen names explicitly for the Recovery
+/// Cycle: "The Genius Portfolio records the whole arc as evidence of
+/// development ... a documented recovery is itself Genius Level evidence
+/// under the four-tier rubric ... not a gap in the record."
+enum PortfolioEntryType {
+  REFLECTION
+  ARTIFACT
+  CERTIFIED_MILESTONE
+  RECOVERY_CYCLE_RECORD
+}
+
+/// The atomic unit of evidence. Every entry belongs to exactly one learner;
+/// `curriculumDomainId` and `geniusCycleSessionId` are nullable because not
+/// every entry originates from a domain-scoped session (a Weekly Reflection
+/// entry, for instance, is the learner's own reflection, not tied to one
+/// session in `curriculumDomainId`'s sense -- see Architecture Spec Part
+/// Seven Workflow 3).
+model PortfolioEntry {
+  id String @id @default(cuid())
+
+  learnerUserId String             @map("learner_user_id")
+  entryType     PortfolioEntryType @map("entry_type")
+
+  curriculumDomainId   String? @map("curriculum_domain_id")
+  geniusCycleSessionId String? @map("genius_cycle_session_id")
+
+  title String
+
+  /// Structured content: reflection text, an artifact's description and/or
+  /// object-storage reference, a milestone's citation, or a Recovery Cycle
+  /// arc's summary -- shape varies by `entryType`, deliberately left as JSON
+  /// rather than a wide sparse table of type-specific columns, since Part
+  /// Eight's portability requirement (an open, inspectable export format)
+  /// cares that this is legible JSON, not that it is relationally normalized.
+  content Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner            User                @relation("PortfolioEntryLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  curriculumDomain   CurriculumDomain?   @relation(fields: [curriculumDomainId], references: [id])
+  geniusCycleSession GeniusCycleSession? @relation(fields: [geniusCycleSessionId], references: [id])
+
+  certificationEvidence CertificationRecordEvidence[]
+
+  @@index([learnerUserId])
+  @@index([entryType])
+  @@map("portfolio_entries")
+}
+
+/// A versioned, exportable compilation -- Architecture Spec Part One's
+/// portability commitment ("the record must be portable") and Part Eight's
+/// non-functional requirement ("a full LifePortfolioSnapshot export, in an
+/// open format ... structured JSON plus the original media files") made
+/// concrete and testable. This slice creates the table and the shape a
+/// snapshot takes; per this prompt's own scope note, the actual export
+/// pipeline (assembling every module's evidence, bundling media) is not this
+/// slice's job -- there is little else to export yet besides `portfolio` and
+/// `assessment` content.
+///
+/// `version` is set by application code as `(count of this learner's prior
+/// snapshots) + 1`, not a database `@default(autoincrement())` -- Postgres
+/// sequences are global, not scoped per learner, so a per-learner version
+/// number has to be computed, not generated.
+model LifePortfolioSnapshot {
+  id String @id @default(cuid())
+
+  learnerUserId String @map("learner_user_id")
+  version       Int    @map("version")
+
+  /// The compiled snapshot content itself, open-format JSON per Part Eight.
+  content Json
+
+  generatedAt DateTime @default(now()) @map("generated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  learner User @relation("LifePortfolioSnapshotLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([learnerUserId, version])
+  @@map("life_portfolio_snapshots")
+}
+
+// ---------------------------------------------------------------------------
+// CURRICULUM MODULE
+// Architecture Spec Part Three: "Curriculum Engine -> `curriculum` -- Nine
+// domains, Signature Experience playbooks, locale variants." Part Four:
+// "CurriculumDomain (the nine domains from Blueprint 04), Signature
+// ExperiencePlaybook, each carrying a `locale` field so a French or
+// Indigenous-language variant is a first-class row, not a translation
+// bolted onto an English original."
+// ---------------------------------------------------------------------------
+
+/// The nine domains named in Blueprint 04 Part Two, cited from that Part
+/// rather than invented. Order matches Part Two's own enumeration.
+enum CurriculumDomainCode {
+  SPIRITUAL_FORMATION
+  INTELLECTUAL_FORMATION
+  LANGUAGE_AND_COMMUNICATION
+  CREATIVE_FORMATION
+  LEADERSHIP_AND_SOCIETY
+  TECHNOLOGY_AND_INNOVATION
+  PHYSICAL_FORMATION
+  EMOTIONAL_AND_SOCIAL_FORMATION
+  GENIUS_DEVELOPMENT
+}
+
+/// One row per (domain, locale) pair -- a French or Indigenous-language
+/// variant is "a first-class row, not a translation bolted onto an English
+/// original" (Part Four), per Part Eight's internationalization requirement:
+/// English, French, and the Indigenous languages Blueprint 04 Part Two names
+/// are first-class locales "from the first release that touches the
+/// `curriculum` ... module," which this slice is. Only Domain Nine, Genius
+/// Development, is populated with real content this slice ("single domain,
+/// to prove the model," per the Roadmap's own Phase 1 framing; domain
+/// confirmed with Duncan directly rather than guessed) -- the other eight
+/// domain codes exist in this enum because Blueprint 04 names all nine, but
+/// no row for them is seeded yet.
+model CurriculumDomain {
+  id String @id @default(cuid())
+
+  code   CurriculumDomainCode @map("code")
+  locale String               @map("locale")
+
+  name        String
+  description String @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  signatureExperiencePlaybooks SignatureExperiencePlaybook[]
+  geniusCycleSessions          GeniusCycleSession[]
+  geniusLevelRubrics           GeniusLevelRubric[]
+  portfolioEntries             PortfolioEntry[]
+
+  @@unique([code, locale])
+  @@map("curriculum_domains")
+}
+
+/// The five Signature Experience playbook types Blueprint 04 Part Ten names
+/// in full (Discovery, Builder, Innovation, Story, Kingdom Project).
+/// Community Impact Project and Masterpiece Project are deliberately
+/// excluded -- Part Ten states plainly that "their full playbooks ... now
+/// live in Blueprint 05," out of this document's and this module's scope.
+enum SignatureExperienceType {
+  DISCOVERY_PROJECT
+  BUILDER_PROJECT
+  INNOVATION_PROJECT
+  STORY_PROJECT
+  KINGDOM_PROJECT
+}
+
+/// `purpose`, `structure`, and `evidenceStandard` are reproduced from
+/// Blueprint 04 Part Ten's own per-type text, not paraphrased, for the
+/// playbook type actually seeded this slice (Discovery Project, matched to
+/// Domain Nine's own description: "personalised opportunities to develop
+/// unique talents, pursue passion projects ... explore future calling").
+model SignatureExperiencePlaybook {
+  id String @id @default(cuid())
+
+  curriculumDomainId String                  @map("curriculum_domain_id")
+  type               SignatureExperienceType @map("type")
+  locale             String                  @map("locale")
+
+  purpose          String @db.Text
+  structure        String @db.Text
+  evidenceStandard String @map("evidence_standard") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  curriculumDomain CurriculumDomain @relation(fields: [curriculumDomainId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumDomainId, type, locale])
+  @@map("signature_experience_playbooks")
+}
+
+// ---------------------------------------------------------------------------
+// LEARNING MODULE
+// Architecture Spec Part Three: "Learning System -> `learning` -- Runs the
+// Genius Cycle session state machine." Part Four: "GeniusCycleSession (one
+// row per run of the seven-movement Genius Cycle from Blueprint 04), each
+// session producing one or more PortfolioEntry rows on completion."
+// ---------------------------------------------------------------------------
+
+/// Blueprint 04 Part Six's own eight labeled steps, 0 through 7 ("the seven
+/// movements," with movement 0 named as a companionship prelude -- modeled
+/// faithfully as the full 0-7 sequence rather than resolving that naming
+/// ambiguity here, per this prompt's own instruction).
+enum GeniusCycleMovement {
+  GENIE_CHECK_IN // 0
+  AWAKEN // 1
+  THINK // 2
+  CREATE // 3
+  LEAD_AND_SERVE // 4
+  BUILD // 5
+  REFLECT // 6
+  GENIE_CHECK_OUT // 7
+}
+
+/// `IN_PROGRESS` moves through `GeniusCycleMovement` in order; `ABANDONED` is
+/// a partial session that must never write a `PortfolioEntry` (Workflow 2's
+/// own text: "Partial, abandoned sessions do not silently become evidence").
+/// `IN_RECOVERY_CYCLE` / `RECOVERY_COMPLETED` are the Blueprint 04 Part
+/// Fourteen branch, tracked independently via `recoveryCycleStep` below.
+enum GeniusCycleSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  IN_RECOVERY_CYCLE
+  RECOVERY_COMPLETED
+}
+
+/// Blueprint 04 Part Fourteen's six named Recovery Cycle steps, in order.
+/// Reaching `TRY_AGAIN` is the one Recovery Cycle outcome that writes
+/// `PortfolioEntry` evidence, per this prompt's own instruction ("a
+/// completed cycle, or an explicit Recovery Cycle branch reaching Try
+/// Again") and Part Fourteen's own text ("the Genius Portfolio records the
+/// whole arc as evidence of development").
+enum RecoveryCycleStep {
+  TRY
+  FAIL
+  REFLECT
+  RECOVER
+  REORIENT
+  TRY_AGAIN
+}
+
+/// One row per run of the Genius Cycle (Blueprint 04 Part Six) or, once
+/// branched, the Recovery Cycle (Part Fourteen) it shares its shape with.
+/// My Genie and the Teacher Assistant are named in Workflow 2 as "available
+/// inside a session" -- per this prompt's deferred-agent boundary, this
+/// model and the service functions built against it
+/// (src/modules/learning/genius-cycle-session.ts) implement only the
+/// session's human-only mechanics: start, movement progression, the
+/// Recovery Cycle branch, completion, and evidence write. No `AgentDefinition`
+/// or `AgentInteraction` reference exists on this table.
+model GeniusCycleSession {
+  id String @id @default(cuid())
+
+  learnerUserId      String @map("learner_user_id")
+  curriculumDomainId String @map("curriculum_domain_id")
+
+  status          GeniusCycleSessionStatus @default(IN_PROGRESS) @map("status")
+  currentMovement GeniusCycleMovement      @default(GENIE_CHECK_IN) @map("current_movement")
+
+  /// Set only once `status` has branched to `IN_RECOVERY_CYCLE` /
+  /// `RECOVERY_COMPLETED`; null for an ordinary Genius Cycle run.
+  recoveryCycleStep RecoveryCycleStep? @map("recovery_cycle_step")
+
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  abandonedAt DateTime? @map("abandoned_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner          User             @relation("GeniusCycleSessionLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  curriculumDomain CurriculumDomain @relation(fields: [curriculumDomainId], references: [id])
+
+  portfolioEntries PortfolioEntry[]
+
+  @@index([learnerUserId, status])
+  @@map("genius_cycle_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// ASSESSMENT MODULE
+// Architecture Spec Part Three: "Assessment Engine -> `assessment` -- Applies
+// Genius Level rubrics to portfolio evidence; holds certification records."
+// Part Four: "GeniusLevelRubric (per domain, per level), CertificationRecord
+// (who certified what, when, against which evidence -- always a human User
+// as the certifying actor, never the ai-gateway module, enforced by a
+// foreign key constraint that simply has no path from an AI agent to this
+// table)."
+// ---------------------------------------------------------------------------
+
+/// Blueprint 04 Part Four's four Chapters, three Genius Levels each.
+enum GeniusLevelChapter {
+  DISCOVERY // Levels 1-3
+  FOUNDATION // Levels 4-6
+  MASTERY // Levels 7-9
+  LEGACY // Levels 10-12
+}
+
+/// Blueprint 04 Part Twenty-Two's "Genius Level Rubric -- Four-Tier": Tier 3,
+/// Proficient, is explicitly "the minimum bar required to advance a Genius
+/// Level," system-wide.
+enum RubricTier {
+  EMERGING // Tier 1
+  DEVELOPING // Tier 2
+  PROFICIENT // Tier 3 -- minimum bar to advance, per Part Twenty-Two
+  EXEMPLARY // Tier 4
+}
+
+/// One row per (domain, level, locale). `levelName` and `evidenceStandard`
+/// are reproduced from Blueprint 04 Part Four's own per-level text (Level 1
+/// "Spark" through Level 12 "Legacy Bearer"); `chapter` and `level` let a
+/// query group by Chapter without re-deriving the mapping. Seeded this slice
+/// for Domain Nine (Genius Development) only, matching the single domain
+/// `curriculum` populates -- Part Four's own per-level text already reads as
+/// domain-agnostic personal-development evidence, which is why it transfers
+/// to Domain Nine directly rather than needing new domain-specific rubric
+/// text invented for this slice.
+model GeniusLevelRubric {
+  id String @id @default(cuid())
+
+  curriculumDomainId String             @map("curriculum_domain_id")
+  level              Int                @map("level")
+  chapter            GeniusLevelChapter @map("chapter")
+  levelName          String             @map("level_name")
+  locale             String             @map("locale")
+
+  evidenceStandard String     @map("evidence_standard") @db.Text
+  minimumTier      RubricTier @default(PROFICIENT) @map("minimum_tier")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  curriculumDomain CurriculumDomain @relation(fields: [curriculumDomainId], references: [id])
+
+  certificationRecords CertificationRecord[]
+
+  @@unique([curriculumDomainId, level, locale])
+  @@map("genius_level_rubrics")
+}
+
+/// Architecture Spec Part Seven Workflow 4: "The agent's tool allowlist has
+/// no path to write a CertificationRecord; only a human User holding the
+/// correct Role can call that action, and the action requires a citation of
+/// specific evidence, not a bare approval." Enforced at two levels here, per
+/// Part Six's "two layers, not one":
+///
+/// Schema level: `certifiedByUserId` is a foreign key to `users.id` only --
+/// `AgentDefinition` and `AgentInteraction` live in an entirely separate id
+/// space with no relation into `User`, so there is categorically no value
+/// this column could hold that resolves to an AI agent rather than a human.
+/// The same "a foreign key constraint that simply has no path from an AI
+/// agent" pattern Part Four names for this table, already true by
+/// construction, not by a special-cased check.
+///
+/// Database level: the accompanying migration's `certification_records_
+/// insert_mentor` RLS policy requires the inserting session's own current,
+/// active Role to be MENTOR (re-resolved at write time, per Part Six's
+/// dynamic-role-resolution principle, not a cached claim) and requires
+/// `certifiedByUserId` to equal the actor's own id -- a Mentor cannot
+/// certify "as" someone else.
+///
+/// The "citation of specific evidence, not a bare approval" requirement is
+/// `CertificationRecordEvidence` below: application code
+/// (src/modules/assessment/certify-genius-level.ts) rejects a certification
+/// attempt with zero evidence rows before it ever reaches the database.
+model CertificationRecord {
+  id String @id @default(cuid())
+
+  learnerUserId       String @map("learner_user_id")
+  geniusLevelRubricId String @map("genius_level_rubric_id")
+
+  certifiedByUserId String @map("certified_by_user_id")
+  certifiedByRoleId String @map("certified_by_role_id")
+
+  certifiedAt DateTime @default(now()) @map("certified_at")
+  notes       String?  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  learner           User              @relation("CertificationRecordLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  geniusLevelRubric GeniusLevelRubric @relation(fields: [geniusLevelRubricId], references: [id])
+  certifiedBy       User              @relation("CertificationRecordCertifiedBy", fields: [certifiedByUserId], references: [id])
+  certifiedByRole   Role              @relation("CertificationRecordCertifiedByRole", fields: [certifiedByRoleId], references: [id])
+
+  evidence CertificationRecordEvidence[]
+
+  @@index([learnerUserId])
+  @@map("certification_records")
+}
+
+/// The FK-backed evidence citation Part Seven Workflow 4 requires -- a real
+/// referential-integrity link to an existing `PortfolioEntry`, not a loose
+/// JSON array of ids, so a citation can never point at evidence that does
+/// not (or no longer) exists. "The record itself remains defensible years
+/// later when a Life Portfolio is presented to an outside institution" (Part
+/// Seven Workflow 4) is a claim about referential integrity, not only about
+/// prose.
+model CertificationRecordEvidence {
+  id String @id @default(cuid())
+
+  certificationRecordId String @map("certification_record_id")
+  portfolioEntryId      String @map("portfolio_entry_id")
+
+  certificationRecord CertificationRecord @relation(fields: [certificationRecordId], references: [id], onDelete: Cascade)
+  portfolioEntry      PortfolioEntry      @relation(fields: [portfolioEntryId], references: [id])
+
+  @@unique([certificationRecordId, portfolioEntryId])
+  @@map("certification_record_evidence")
+}
+
+// ---------------------------------------------------------------------------
+// AI GATEWAY MODULE -- Phase 1 extension (data model only)
+// Architecture Spec Part Four: "GenieMemory (My Genie's structured memory
+// per learner, the source-of-truth table the pgvector index in Part Two is
+// built from)."
+// ---------------------------------------------------------------------------
+
+/// Created empty for a learner at New Learner Onboarding (Architecture Spec
+/// Part Seven Workflow 1: "My Genie is instantiated for the learner, its
+/// GenieMemory table created empty") -- the row, not a live conversation.
+/// Per this prompt's deferred-agent boundary, no content field is added here
+/// beyond the row's existence and its owner: inventing a memory shape ahead
+/// of the live My Genie pipeline that will actually populate it (deferred
+/// pending M3, per the Roadmap) risks guessing wrong about what that future
+/// slice needs. Creating the row now is the retrofit-avoidance this prompt
+/// asks for; guessing its internal shape now is not.
+model GenieMemory {
+  id String @id @default(cuid())
+
+  learnerUserId String @unique @map("learner_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner User @relation("GenieMemoryLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+
+  @@map("genie_memories")
+}
+
 // ---------------------------------------------------------------------------
 // AI GATEWAY MODULE (SKELETON)
 // Architecture Spec Part Three: "AI Engine -> `ai-gateway` -- Hosts and governs
@@ -244,9 +819,9 @@ model ParentLink {
 /// row's data, testable in a unit test, not a prompt instruction trusted to
 /// hold.
 model AgentDefinition {
-  id     String @id @default(cuid())
+  id       String @id @default(cuid())
   agentKey String @unique @map("agent_key")
-  name   String
+  name     String
 
   /// Blueprint 14 Section Four's "Purpose" field, reproduced verbatim from
   /// Blueprint 08 Part Four Section Six per that Section's own note.
@@ -375,6 +950,12 @@ enum AuditEventType {
   PARENT_LINK_CREATED
   PARENT_LINK_REVOKED
   CERTIFICATION_DECISION
+  /// Added Phase 1 Slice A, now that `MentorAssignment` exists -- a
+  /// Mentor-learner relationship, including the manually seeded bootstrap
+  /// cohort's assignments, is safeguarding-adjacent enough to warrant its
+  /// own audit trail entry, the same reasoning already applied to role
+  /// grants.
+  MENTOR_ASSIGNED
 }
 
 /// The append-only record itself. No `updatedAt` field exists on this model,
