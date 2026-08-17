@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DGENIE — Development Control Centre</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151c;
+    --panel-border: #1f2430;
+    --text: #e7e9ee;
+    --text-dim: #8a92a3;
+    --text-faint: #5a6272;
+    --accent: #6ea8ff;
+    --complete: #3ecf8e;
+    --in-progress: #f2b84b;
+    --blocked: #ef5b5b;
+    --not-started: #3a4152;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header p {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 13px;
+    max-width: 640px;
+  }
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--complete); }
+  .dot.offline { background: var(--blocked); }
+
+  main {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 32px 64px;
+  }
+
+  .overall {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+  }
+  .overall-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .overall-top .big { font-size: 28px; font-weight: 700; }
+  .overall-top .label { font-size: 13px; color: var(--text-dim); }
+  .bar {
+    height: 8px;
+    background: var(--not-started);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--complete));
+    border-radius: 6px;
+    transition: width 0.4s ease;
+  }
+
+  h2.section-title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-faint);
+    margin: 32px 0 12px;
+  }
+
+  .blockers {
+    display: grid;
+    gap: 8px;
+  }
+  .blocker {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--blocked);
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  .blocker .label { font-size: 13.5px; font-weight: 600; }
+  .blocker .detail { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+
+  .phase {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .phase-header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .phase-name { font-size: 14.5px; font-weight: 600; }
+  .phase-summary { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  .phase-header-right { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .phase-progress-text { font-size: 12.5px; color: var(--text-dim); min-width: 70px; text-align: right; }
+  .phase-bar {
+    width: 90px;
+    height: 6px;
+    background: var(--not-started);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .phase-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .chevron { color: var(--text-faint); transition: transform 0.2s ease; font-size: 11px; }
+  .phase.open .chevron { transform: rotate(90deg); }
+
+  .status-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .status-badge.complete { background: rgba(62,207,142,0.14); color: var(--complete); }
+  .status-badge.in-progress { background: rgba(242,184,75,0.14); color: var(--in-progress); }
+  .status-badge.blocked { background: rgba(239,91,91,0.14); color: var(--blocked); }
+  .status-badge.not-started { background: rgba(90,98,114,0.16); color: var(--text-dim); }
+
+  .task-list {
+    display: none;
+    padding: 4px 20px 16px;
+    border-top: 1px solid var(--panel-border);
+  }
+  .phase.open .task-list { display: block; }
+  .task {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 13px;
+  }
+  .task:last-child { border-bottom: none; }
+  .task-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .task-dot.complete { background: var(--complete); }
+  .task-dot.in-progress { background: var(--in-progress); }
+  .task-dot.blocked { background: var(--blocked); }
+  .task-dot.not-started { background: var(--not-started); }
+  .task-label { color: var(--text); }
+  .task-note { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
+
+  footer {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 32px 40px;
+    color: var(--text-faint);
+    font-size: 11.5px;
+  }
+  code { color: var(--accent); background: rgba(110,168,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>DGENIE — Development Control Centre</h1>
+    <p>A read-only status board over the platform build, rolled up from Phase 0 through Phase 5. Not a system of record — <code>GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md</code> Part Nine is that. Internal only.</p>
+  </div>
+  <div class="status-chip"><span class="dot" id="conn-dot"></span><span id="conn-text">connecting…</span></div>
+</header>
+
+<main>
+  <div class="overall">
+    <div class="overall-top">
+      <div>
+        <div class="big" id="overall-pct">—</div>
+        <div class="label" id="overall-count">Loading status…</div>
+      </div>
+      <div class="label" id="last-update"></div>
+    </div>
+    <div class="bar"><div class="bar-fill" id="overall-bar" style="width:0%"></div></div>
+  </div>
+
+  <h2 class="section-title">Open Blockers</h2>
+  <div class="blockers" id="blockers"></div>
+
+  <h2 class="section-title">Build Phases</h2>
+  <div id="phases"></div>
+</main>
+
+<footer>
+  Served locally by <code>server.js</code> at <code>DDP/control-centre</code>. Updates automatically every 5 seconds while this tab stays open — no need to refresh by hand. Status changes by editing <code>manifest.json</code> directly; nothing else writes to it.
+</footer>
+
+<script>
+  const statusColor = { complete: 'var(--complete)', 'in-progress': 'var(--in-progress)', blocked: 'var(--blocked)', 'not-started': 'var(--not-started)' };
+  const statusLabel = { complete: 'Complete', 'in-progress': 'In progress', blocked: 'Blocked', 'not-started': 'Not started' };
+  const openPhases = new Set(); // remembers which phase cards the user expanded, across polls
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function render(data) {
+    document.getElementById('overall-pct').textContent = data.overallProgress + '%';
+    document.getElementById('overall-count').textContent = data.completeTasks + ' of ' + data.totalTasks + ' tasks complete';
+    document.getElementById('overall-bar').style.width = data.overallProgress + '%';
+    document.getElementById('last-update').textContent = 'Checked ' + new Date(data.generatedAt).toLocaleTimeString();
+
+    const blockersEl = document.getElementById('blockers');
+    blockersEl.innerHTML = '';
+    if (!data.openBlockers || data.openBlockers.length === 0) {
+      blockersEl.appendChild(el('div', 'blocker', 'No open blockers recorded.'));
+    } else {
+      data.openBlockers.forEach((b) => {
+        const card = el('div', 'blocker');
+        card.appendChild(el('div', 'label', b.label));
+        if (b.detail) card.appendChild(el('div', 'detail', b.detail));
+        blockersEl.appendChild(card);
+      });
+    }
+
+    const phasesEl = document.getElementById('phases');
+    phasesEl.innerHTML = '';
+    data.phases.forEach((phase) => {
+      const card = el('div', 'phase' + (openPhases.has(phase.id) ? ' open' : ''));
+      card.dataset.phaseId = phase.id;
+
+      const headerRow = el('div', 'phase-header');
+      const left = el('div', 'phase-header-left');
+      const chevron = el('span', 'chevron', '▶');
+      const nameWrap = el('div');
+      nameWrap.appendChild(el('div', 'phase-name', phase.name));
+      nameWrap.appendChild(el('div', 'phase-summary', phase.summary));
+      left.appendChild(chevron);
+      left.appendChild(nameWrap);
+
+      const right = el('div', 'phase-header-right');
+      const badge = el('span', 'status-badge ' + phase.status, statusLabel[phase.status]);
+      const progressText = el('span', 'phase-progress-text', phase.counts.complete + '/' + phase.counts.total + ' · ' + phase.progress + '%');
+      const bar = el('div', 'phase-bar');
+      const barFill = el('div', 'phase-bar-fill');
+      barFill.style.width = phase.progress + '%';
+      barFill.style.background = statusColor[phase.status];
+      bar.appendChild(barFill);
+      right.appendChild(badge);
+      right.appendChild(progressText);
+      right.appendChild(bar);
+
+      headerRow.appendChild(left);
+      headerRow.appendChild(right);
+      headerRow.addEventListener('click', () => {
+        if (openPhases.has(phase.id)) openPhases.delete(phase.id);
+        else openPhases.add(phase.id);
+        card.classList.toggle('open');
+      });
+
+      const taskList = el('div', 'task-list');
+      phase.tasks.forEach((task) => {
+        const row = el('div', 'task');
+        row.appendChild(el('span', 'task-dot ' + task.status));
+        const textWrap = el('div');
+        textWrap.appendChild(el('div', 'task-label', task.label));
+        if (task.note) textWrap.appendChild(el('div', 'task-note', task.note));
+        row.appendChild(textWrap);
+        taskList.appendChild(row);
+      });
+
+      card.appendChild(headerRow);
+      card.appendChild(taskList);
+      phasesEl.appendChild(card);
+    });
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch('/api/status', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      render(data);
+      document.getElementById('conn-dot').classList.remove('offline');
+      document.getElementById('conn-text').textContent = 'live';
+    } catch (err) {
+      document.getElementById('conn-dot').classList.add('offline');
+      document.getElementById('conn-text').textContent = 'server unreachable';
+    }
+  }
+
+  // Expand Phase 0 by default on first load only, so there's something to see immediately.
+  openPhases.add('phase-0');
+  poll();
+  setInterval(poll, 5000);
+</script>
+
+</body>
+</html>

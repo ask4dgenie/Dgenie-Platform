@@ -1,0 +1,341 @@
+{
+  "vault": "DGENIE MODEL SCHOOLS",
+  "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 — this manifest is a status board over that governance, never the other way around",
+  "lastMeaningfulUpdate": "2026-08-16",
+  "updateInstructions": "Edit only the \"status\" (and optionally \"note\") field on a task when real work happens. Valid statuses: not-started, in-progress, complete, blocked. Do not add, remove, or reorder tasks without checking them against the governing documents first. The server re-reads this file on every request, so a saved edit shows up the next time the dashboard polls, no restart needed.",
+  "phases": [
+    {
+      "id": "phase-0",
+      "name": "Phase 0 — Foundation",
+      "summary": "Nothing user-facing ships. Everything after this phase depends on it being solid.",
+      "tasks": [
+        {
+          "id": "identity-module",
+          "label": "`identity` module — User, Role (with validity window), ParentLink",
+          "status": "not-started"
+        },
+        {
+          "id": "agent-gateway-skeleton",
+          "label": "Agent Gateway skeleton — AgentDefinition, AgentInteraction (skeleton only); only My Genie's AgentDefinition populated",
+          "status": "not-started"
+        },
+        {
+          "id": "audit-log",
+          "label": "Audit Log — append-only at the database level, no UPDATE/DELETE grant for any application role",
+          "status": "not-started"
+        },
+        {
+          "id": "rls-framework",
+          "label": "Row-Level Security policy framework",
+          "status": "not-started"
+        },
+        {
+          "id": "blueprints-sync-script",
+          "label": "`BLUEPRINTS/` mirror sync script (copies the 15 canonical GOVERNANCE DOCUMENTS files) — can be authored here even though the page it feeds ships later",
+          "status": "not-started"
+        },
+        {
+          "id": "role-model-future-proofing",
+          "label": "Role/User schema anticipates billing and compensation keying off it later (avoid a Phase 1 retrofit)",
+          "status": "not-started",
+          "note": "Added 2026-08-16 alongside the billing/compensation module ratification."
+        }
+      ]
+    },
+    {
+      "id": "phase-1",
+      "name": "Phase 1 — MVP Core Loop",
+      "summary": "The smallest slice that lets one real learner, one real Mentor, and one real Parent complete a genuine, evidenced Genius Cycle end to end.",
+      "tasks": [
+        {
+          "id": "learning-module",
+          "label": "`learning` module — GeniusCycleSession state machine (seven movements + Recovery Cycle)",
+          "status": "not-started"
+        },
+        {
+          "id": "curriculum-module",
+          "label": "`curriculum` module — single domain, locale-first (CurriculumDomain, SignatureExperiencePlaybook)",
+          "status": "not-started"
+        },
+        {
+          "id": "portfolio-module",
+          "label": "`portfolio` module — PortfolioEntry, LifePortfolioSnapshot",
+          "status": "not-started"
+        },
+        {
+          "id": "assessment-module",
+          "label": "`assessment` module — GeniusLevelRubric, CertificationRecord",
+          "status": "not-started"
+        },
+        {
+          "id": "my-genie-full-pipeline",
+          "label": "My Genie full pipeline — 3D avatar, one permanent voice, speech-to-text input, age-five capability floor enforced at the AgentDefinition level",
+          "status": "not-started"
+        },
+        {
+          "id": "teacher-assistant-agent",
+          "label": "Teacher Assistant agent live",
+          "status": "not-started"
+        },
+        {
+          "id": "messaging-slice-mentor-sessions",
+          "label": "Narrow `messaging` slice — video/voice session tool + MentorSessionTranscript (pulled forward for Weekly Reflection)",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-new-learner-onboarding",
+          "label": "New Learner Onboarding workflow, including a manually seeded first Mentor cohort (bootstrap, mirrors the Council/Oversight Body precedent)",
+          "status": "not-started",
+          "note": "Recommendation, not yet confirmed by Duncan — see roadmap Part 6."
+        },
+        {
+          "id": "workflow-daily-learning",
+          "label": "Daily Learning (the Genius Cycle) workflow",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-weekly-reflection",
+          "label": "Weekly Reflection workflow, incl. scheduled Mentor video/voice check-in",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-genius-level-certification",
+          "label": "Genius Level Certification workflow",
+          "status": "not-started"
+        },
+        {
+          "id": "time-capsule",
+          "label": "Time Capsule / annual BirthdayVoiceMemento ritual",
+          "status": "not-started"
+        },
+        {
+          "id": "billing-module",
+          "label": "`billing` module — Subscription, Invoice, PaymentMethod, PaymentTransaction (PSP-coupled)",
+          "status": "not-started",
+          "note": "Ratified 2026-08-16. Untestable until a PSP vendor is chosen and the subscription price is set."
+        },
+        {
+          "id": "compensation-module",
+          "label": "`compensation` module — MentorPayoutCalculation, ScholarshipAllocation (no FK to MentorCaseloadView)",
+          "status": "not-started",
+          "note": "Ratified 2026-08-16. Untestable until the subscription price is set."
+        },
+        {
+          "id": "mentor-caseload-ceiling",
+          "label": "Mentor caseload ceiling (20 learners, combined across tracks) enforced at onboarding",
+          "status": "not-started"
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "Phase 2 — Community and Family",
+      "summary": "Blueprint 04's Two-Track cadence and Blueprint 06's seven pillars of community become real rather than theoretical.",
+      "tasks": [
+        {
+          "id": "community-module",
+          "label": "`community` module — Circle, Regional, National, Global membership",
+          "status": "not-started"
+        },
+        {
+          "id": "messaging-remainder",
+          "label": "Remainder of `messaging` — day-to-day async text",
+          "status": "not-started"
+        },
+        {
+          "id": "events-module",
+          "label": "`events` module — Morning Spark, Circle Time, Recognition Night, Gatherings",
+          "status": "not-started"
+        },
+        {
+          "id": "parent-companion-agent",
+          "label": "Parent Companion agent live",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-new-parent",
+          "label": "New Parent workflow",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-new-mentor-certification",
+          "label": "New Mentor Certification workflow (formal), closing the Phase 1 bootstrap gap",
+          "status": "not-started"
+        },
+        {
+          "id": "same-faith-mentor-matching",
+          "label": "Same-faith Mentor matching preference, captured at enrollment",
+          "status": "not-started"
+        },
+        {
+          "id": "control-tower-partial",
+          "label": "Partial Mentor Control Tower — caseload count + session-frequency signals only",
+          "status": "not-started"
+        },
+        {
+          "id": "mentor-rotation-operational",
+          "label": "Mentor five-year rotation, operational workflow (renewal, handoff protocol)",
+          "status": "not-started"
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "name": "Phase 3 — Deployment, Contribution, and the Wider Agent Ecosystem",
+      "summary": "Safeguarding Escalation is release-blocking no later than this phase.",
+      "tasks": [
+        {
+          "id": "projects-module",
+          "label": "`projects` module — Project, Milestone, DefenseRecord",
+          "status": "not-started"
+        },
+        {
+          "id": "contribution-module",
+          "label": "`contribution` module",
+          "status": "not-started"
+        },
+        {
+          "id": "archive-module",
+          "label": "`archive` module — Masterpiece Archive",
+          "status": "not-started"
+        },
+        {
+          "id": "marketplace-module",
+          "label": "`marketplace` module",
+          "status": "not-started"
+        },
+        {
+          "id": "badges-module",
+          "label": "`badges` module",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-masterpiece-creation-defense",
+          "label": "Masterpiece Creation and Defense workflow",
+          "status": "not-started"
+        },
+        {
+          "id": "remaining-agents-phase3",
+          "label": "Project Coach, Formation Assistant, Wellbeing Assistant, Career Navigator agents; full Assessment Assistant rubric coverage",
+          "status": "not-started"
+        },
+        {
+          "id": "workflow-safeguarding-escalation",
+          "label": "Safeguarding Escalation workflow — release-blocking gate, no cohort old enough for Deployment circles ships without it",
+          "status": "not-started"
+        },
+        {
+          "id": "alumni-authored-curriculum",
+          "label": "Alumni-authored curriculum via the Contributor role",
+          "status": "not-started"
+        },
+        {
+          "id": "elder-genie-test-transition",
+          "label": "Elder Genie continuity test case — GenieMemory survives a Learner-to-Contributor role transition",
+          "status": "not-started"
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "name": "Phase 4 — Governance, Oversight, and Institutional Memory",
+      "summary": "Gives the Board of Stewards, Constitutional Council, and Oversight Body their own tooling.",
+      "tasks": [
+        {
+          "id": "governance-module",
+          "label": "`governance` module — Board records, Council review queue, amendment tracking",
+          "status": "not-started"
+        },
+        {
+          "id": "oversight-module",
+          "label": "`oversight` module — independent audit and investigation tooling",
+          "status": "not-started"
+        },
+        {
+          "id": "remaining-agents-phase4",
+          "label": "Knowledge Librarian, Research Assistant, Analytics Agents, Governance Assistants",
+          "status": "not-started"
+        },
+        {
+          "id": "legacy-module",
+          "label": "`legacy` module — Alumni, Mentor, Legacy Steward ongoing story",
+          "status": "not-started"
+        },
+        {
+          "id": "control-tower-full",
+          "label": "Full Mentor Control Tower — AuditFinding signal added",
+          "status": "not-started"
+        },
+        {
+          "id": "elder-genie-test-legacy",
+          "label": "Elder Genie continuity test case #2 — Legacy Induction",
+          "status": "not-started"
+        }
+      ]
+    },
+    {
+      "id": "phase-5",
+      "name": "Phase 5 — Expansion",
+      "summary": "Expansion beyond the first two languages, the nine expansion contexts, and infrastructure extraction if genuine scale requires it.",
+      "tasks": [
+        {
+          "id": "locale-expansion",
+          "label": "Locale expansion beyond the first two languages",
+          "status": "not-started"
+        },
+        {
+          "id": "expansion-contexts",
+          "label": "Nine expansion contexts (Blueprint 08 Part Four Section Eleven)",
+          "status": "not-started"
+        },
+        {
+          "id": "infra-extraction",
+          "label": "Infrastructure extraction from the modular monolith, only if genuine scale requires it",
+          "status": "not-started"
+        }
+      ]
+    }
+  ],
+  "openBlockers": [
+    {
+      "id": "subscription-price",
+      "label": "The subscription price does not exist yet.",
+      "detail": "Nothing built on `billing` or `compensation` is meaningfully testable without it. Named in the Roadmap since 2026-08-15."
+    },
+    {
+      "id": "psp-vendor",
+      "label": "Payment processor (PSP) not selected.",
+      "detail": "Recommended candidate is Stripe, matching the pre-reset build's own archived design, but not confirmed."
+    },
+    {
+      "id": "scholarship-pool-reading",
+      "label": "The 10%-scholarship-pool reading is unconfirmed.",
+      "detail": "Read as implementing the existing constitutional 10%-of-net-revenue floor via a per-transaction earmark, not a separate obligation — flagged for Duncan twice, still not confirmed."
+    },
+    {
+      "id": "caseload-track-split",
+      "label": "Whether the 20-learner caseload ceiling should split by track is unresolved.",
+      "detail": "Blueprint 11 itself names this as open, since Home Track and Membership Track cadences plausibly cost different amounts of Mentor time."
+    },
+    {
+      "id": "mentor-bootstrap-confirmation",
+      "label": "The Phase 1 Mentor-onboarding bootstrap is a recommendation, not yet confirmed.",
+      "detail": "A manually seeded first cohort of Mentors, mirroring the Council/Oversight Body bootstrap precedent."
+    },
+    {
+      "id": "tts-stt-webrtc-vendors",
+      "label": "TTS, STT, and WebRTC vendors are unselected.",
+      "detail": "Become live decisions the moment Phase 1 work actually starts."
+    },
+    {
+      "id": "three-missing-tech-specs",
+      "label": "Three named Technical Specifications don't exist yet.",
+      "detail": "AI Governance Technical Compliance Specification, full Data Model Reference, API and Integration Reference — all named High priority in the Architecture Spec's own Recommendations table."
+    },
+    {
+      "id": "devils-advocate-m3-m6-m8",
+      "label": "Mitigations M3 (COPPA/biometric review), M6, and M8 remain open.",
+      "detail": "Not yet raised again by Duncan since the 2026-08-15 mitigation tracker."
+    }
+  ]
+}

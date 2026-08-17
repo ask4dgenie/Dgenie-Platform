@@ -1,0 +1,15 @@
+# github-mcp-server/ is reference material (a separate clone of GitHub's own
+# open-source MCP server, with its own .git history) that landed in this
+# folder by accident. It is not part of the DGENIE platform and must never be
+# committed here — see the Phase 0 PR description for the full note to
+# Duncan recommending it move out of DDP/ entirely.
+/github-mcp-server/
+
+# Root-level Node artifacts, in case anything outside apps/web ever needs them.
+node_modules/
+.DS_Store
+
+# The generated BLUEPRINTS/ mirror is a mechanically-produced copy of
+# GOVERNANCE DOCUMENTS/ (see scripts/sync-blueprints.mjs) — regenerate it,
+# don't hand-edit it, and don't commit a stale copy alongside source changes
+# that haven't been through the sync script.
