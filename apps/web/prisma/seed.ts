@@ -1,4 +1,6 @@
 import { myGenieDefinition } from "../src/modules/ai-gateway/my-genie-definition";
+import { parentCompanionDefinition } from "../src/modules/ai-gateway/parent-companion-definition";
+import { seedCircle, seedNationalCommunity, seedRegion } from "../src/modules/community/community-seed";
 import {
   discoveryProjectPlaybook,
   geniusDevelopmentDomain,
@@ -115,10 +117,52 @@ async function seedMentorBootstrap() {
   }
 }
 
+/**
+ * Phase 2 seed: Parent Companion's AgentDefinition (Blueprint 14 Section
+ * Four, Agent Three), `isActive: false` -- see src/modules/ai-gateway/
+ * parent-companion-definition.ts's own comment for the consistency
+ * reasoning behind the deferral.
+ */
+async function seedParentCompanion() {
+  await prisma.agentDefinition.upsert({
+    where: { agentKey: parentCompanionDefinition.agentKey },
+    create: parentCompanionDefinition,
+    update: parentCompanionDefinition,
+  });
+}
+
+/**
+ * Phase 2 seed: a minimal NationalCommunity/Region/Circle so the New Parent
+ * workflow has a real Circle to connect a family to. See
+ * src/modules/community/community-seed.ts for why this is placeholder
+ * structure, not a claim about real DGENIE geography.
+ */
+async function seedCommunityStructure() {
+  const nationalCommunity = await prisma.nationalCommunity.upsert({
+    where: { id: "seed-national-community" },
+    create: { id: "seed-national-community", ...seedNationalCommunity },
+    update: seedNationalCommunity,
+  });
+
+  const region = await prisma.region.upsert({
+    where: { id: "seed-region" },
+    create: { id: "seed-region", nationalCommunityId: nationalCommunity.id, ...seedRegion },
+    update: { nationalCommunityId: nationalCommunity.id, ...seedRegion },
+  });
+
+  await prisma.circle.upsert({
+    where: { id: "seed-circle" },
+    create: { id: "seed-circle", regionId: region.id, ...seedCircle },
+    update: { regionId: region.id, ...seedCircle },
+  });
+}
+
 async function main() {
   await seedMyGenie();
   await seedGeniusDevelopmentDomain();
   await seedMentorBootstrap();
+  await seedParentCompanion();
+  await seedCommunityStructure();
 }
 
 main()

@@ -62,11 +62,15 @@ model User {
   track Track? @map("track")
 
   /// New Learner Onboarding's own text requires assigning a Local Learning
-  /// Circle, but `community` (the module that would provide a real Circle to
-  /// reference) doesn't ship until Phase 2 -- Roadmap Part 5's first
-  /// "sequencing wrinkle." Left as a bare nullable id (no FK yet; there is no
-  /// `circles` table to reference) rather than pulling `community` forward
-  /// for one field, populated once Phase 2's `community` module ships.
+  /// Circle; Phase 1 Slice A left this a bare nullable id with no FK (no
+  /// `circles` table existed yet). Phase 2's New Parent workflow
+  /// (src/modules/community/new-parent.ts) closes that deferral directly and
+  /// backfills any Phase 1-era learner still carrying a null value here. Kept
+  /// as a plain id rather than upgraded to a `@relation` field, deliberately
+  /// -- the authoritative record of current Circle standing is
+  /// `CircleMembership` (with its own validity window); this column is a
+  /// fast-lookup denormalization the assignment workflow keeps in sync, not
+  /// a second source of truth.
   circleId String? @map("circle_id")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -99,6 +103,17 @@ model User {
   certificationRecordsAsCertifier CertificationRecord[] @relation("CertificationRecordCertifiedBy")
 
   genieMemory GenieMemory? @relation("GenieMemoryLearner")
+
+  circleMemberships CircleMembership[] @relation("CircleMembershipUser")
+
+  directMessagesSent     DirectMessage[] @relation("DirectMessageSender")
+  directMessagesReceived DirectMessage[] @relation("DirectMessageRecipient")
+  circleMessagesAuthored CircleMessage[] @relation("CircleMessageAuthor")
+
+  morningSparksAuthored MorningSpark[] @relation("MorningSparkAuthor")
+
+  recognitionNightsAsLearner    RecognitionNight[] @relation("RecognitionNightLearner")
+  recognitionNightsAsRecognizer RecognitionNight[] @relation("RecognitionNightRecognizedBy")
 
   @@map("users")
 }
@@ -770,6 +785,295 @@ model CertificationRecordEvidence {
 }
 
 // ---------------------------------------------------------------------------
+// COMMUNITY MODULE -- Phase 2
+// Architecture Spec Part Three: "Community System -> `community` -- Circle,
+// Regional, National, Global membership." Part Four: "`Circle` (a Local
+// Learning Circle), `CircleMembership`, `Region`, `NationalCommunity`,
+// mirroring the seven layers of belonging without collapsing them into a
+// single generic 'group' table, because the rights and workflows attached
+// to a Circle and a Regional Community are genuinely different." Blueprint
+// 06 Part Six names the seven layers; this module builds the third through
+// sixth (Family Learning Unit is the existing ParentLink relationship, not
+// a new table -- see the note on FamilyLearningUnit below; Global Community
+// has no table of its own either, since Blueprint 06 describes it as "every
+// DGENIE member worldwide," not a queryable grouping this module's own text
+// asks it to hold membership for).
+// ---------------------------------------------------------------------------
+
+/// Blueprint 06 Part Six: "Members within a single nation, sharing civic and
+/// cultural formation ... and coordinating national-level partnerships and
+/// compliance." No membership table of its own -- Part Four's own module
+/// text names only `Circle`, `CircleMembership`, `Region`, and
+/// `NationalCommunity`; a learner's national membership is implicit through
+/// their Circle's Region, not a separately tracked join, the same
+/// "don't invent structure governance doesn't ask for" discipline applied
+/// throughout this phase. Richer national-level tooling (partnerships,
+/// compliance) is explicitly out of this phase's scope.
+model NationalCommunity {
+  id   String @id @default(cuid())
+  name String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  regions Region[]
+
+  @@map("national_communities")
+}
+
+/// Blueprint 06 Part Six: "A cluster of Local Learning Circles across a
+/// state, province, or metropolitan area, connected through the monthly
+/// Gathering and shared access to Community Experts." `nationalCommunityId`
+/// is nullable -- a Region can exist before its national grouping is set up,
+/// the same "just enough structure" scoping this phase's own instructions
+/// ask for. Regional Steward tooling and the Mentor Control Tower's partial
+/// build are explicitly out of this phase, per this prompt's own non-goals.
+model Region {
+  id   String @id @default(cuid())
+  name String
+
+  nationalCommunityId String? @map("national_community_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  nationalCommunity NationalCommunity? @relation(fields: [nationalCommunityId], references: [id])
+  circles           Circle[]
+  gatherings        Gathering[]
+
+  @@map("regions")
+}
+
+/// Blueprint 06 Part Six: "A small, geographically real group of DGENIE
+/// families and learners who gather weekly for Circle Time, execute
+/// Community Impact Projects together, and give the digital-first community
+/// an embodied, local presence." A Circle always belongs to a Region --
+/// Blueprint 06's own definition of a Regional Community is a cluster of
+/// Circles, so a Circle without a Region would be a layer the seven-layer
+/// model doesn't describe.
+model Circle {
+  id   String @id @default(cuid())
+  name String
+
+  regionId String @map("region_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  region            Region             @relation(fields: [regionId], references: [id])
+  memberships       CircleMembership[]
+  circleTimes       CircleTime[]
+  messages          CircleMessage[]
+  recognitionNights RecognitionNight[]
+
+  @@map("circles")
+}
+
+/// A member's standing in a Circle, with the same validity-window
+/// discipline Phase 0 established for `Role` and Phase 1 Slice A extended
+/// to `MentorAssignment`: `leftAt = null` means currently active, a closed
+/// window is kept as history rather than deleted, so a family's Circle
+/// history (a move, a reassignment) is reconstructable rather than
+/// overwritten. Both a Parent and their linked learner(s) become members of
+/// the same Circle when New Parent workflow runs -- Blueprint 06's own
+/// phrasing is "families and learners," not learners alone.
+model CircleMembership {
+  id String @id @default(cuid())
+
+  circleId String @map("circle_id")
+  userId   String @map("user_id")
+
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user   User   @relation("CircleMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([circleId, leftAt])
+  @@index([userId, leftAt])
+  @@map("circle_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// MESSAGING MODULE -- remainder (Phase 2)
+// Architecture Spec Part Four: "Beyond [MentorSessionTranscript, shipped in
+// Phase 1], and the day-to-day text exchange the module's name implies, its
+// entities are scoped tightly to Blueprint 08 Part Four's table and need no
+// further elaboration here." Blueprint 08 Part Four Section Seven:
+// "Communication System | Carries messages between members, mentors,
+// families." Section Nine's Information Architecture table names no
+// dedicated "Messages" row, deliberately not over-specified further than
+// that -- these two entities are kept intentionally minimal rather than
+// inventing structure (threads, reactions, read receipts beyond a single
+// timestamp) governance never asks for.
+// ---------------------------------------------------------------------------
+
+/// A direct, one-to-one message between two members. Ownership follows
+/// Section Nine's general Ownership and Trust framing extended to a
+/// member's own authored/received communication -- visible to its sender
+/// and recipient only.
+model DirectMessage {
+  id String @id @default(cuid())
+
+  senderUserId    String @map("sender_user_id")
+  recipientUserId String @map("recipient_user_id")
+
+  content String @db.Text
+
+  sentAt DateTime  @default(now()) @map("sent_at")
+  readAt DateTime? @map("read_at")
+
+  sender    User @relation("DirectMessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  recipient User @relation("DirectMessageRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([senderUserId])
+  @@index([recipientUserId])
+  @@map("direct_messages")
+}
+
+/// A message or announcement scoped to a Circle, visible to that Circle's
+/// current membership -- "Circle-scoped messages/announcements visible to a
+/// Circle's membership," per this phase's own scope. Any active Circle
+/// member may post, matching Section Seven's plain "carries messages
+/// between members, mentors, families," not a staff-only broadcast
+/// mechanism governance never distinguishes from ordinary Circle
+/// communication.
+model CircleMessage {
+  id String @id @default(cuid())
+
+  circleId     String @map("circle_id")
+  authorUserId String @map("author_user_id")
+
+  content String @db.Text
+
+  postedAt DateTime @default(now()) @map("posted_at")
+
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  author User   @relation("CircleMessageAuthor", fields: [authorUserId], references: [id])
+
+  @@index([circleId])
+  @@map("circle_messages")
+}
+
+// ---------------------------------------------------------------------------
+// EVENTS MODULE -- four rhythms (Phase 2)
+// Blueprint 06 Part Five: "Community Life." The annual rhythms (Founders'
+// Day, Masterpiece Showcase, Global Gathering, Legacy Induction) are real
+// per that same Part but out of this phase's scope, per this prompt's own
+// non-goals and the Control Centre manifest's own task scope.
+// ---------------------------------------------------------------------------
+
+/// Blueprint 06 Part Five, "Daily rhythms": "a single short reflection,
+/// question, or story shared across the global community, small enough to
+/// take a minute." Staff-authored, not learner-generated, and not
+/// domain-specific -- one row per calendar day, community-wide.
+model MorningSpark {
+  id String @id @default(cuid())
+
+  content          String   @db.Text
+  scheduledFor     DateTime @map("scheduled_for")
+  authoredByUserId String   @map("authored_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  authoredBy User @relation("MorningSparkAuthor", fields: [authoredByUserId], references: [id])
+
+  @@unique([scheduledFor])
+  @@map("morning_sparks")
+}
+
+/// Shared by `CircleTime` and `Gathering` below -- both are scheduled
+/// community events with the same simple lifecycle.
+enum CommunityEventStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+/// Blueprint 06 Part Five, "Weekly rhythms": "Every Local Learning Circle
+/// gathers weekly ... for a rhythm called Circle Time: part reflection,
+/// part collaborative project work, part simple fellowship." A scheduled
+/// event tied to a `Circle`, not a `GeniusCycleSession` -- per this phase's
+/// own instruction, deliberately distinct from the individual learning
+/// state machine Phase 1 Slice A built.
+model CircleTime {
+  id String @id @default(cuid())
+
+  circleId     String               @map("circle_id")
+  scheduledFor DateTime             @map("scheduled_for")
+  status       CommunityEventStatus @default(SCHEDULED) @map("status")
+  notes        String?              @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  @@index([circleId, scheduledFor])
+  @@map("circle_times")
+}
+
+/// Blueprint 06 Part Five, "Monthly rhythms": "Regional Communities ...
+/// host a monthly Gathering, a live digital event connecting several Local
+/// Learning Circles for shared teaching, testimony, and celebration."
+model Gathering {
+  id String @id @default(cuid())
+
+  regionId     String               @map("region_id")
+  scheduledFor DateTime             @map("scheduled_for")
+  status       CommunityEventStatus @default(SCHEDULED) @map("status")
+  title        String?
+  description  String?              @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  region Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@index([regionId, scheduledFor])
+  @@map("gatherings")
+}
+
+/// Blueprint 06 Part Five, "Monthly rhythms": "Each month closes with
+/// Recognition Night, a community-wide moment honoring Genius Level
+/// advancements, service completed, and character observed, never academic
+/// ranking." Blueprint 08 Part Four Section Eight's own workflow table
+/// confirms the shape: "Monthly Review | Mentor, Parent, Community Mentor |
+/// A Recognition Night entry" -- one row per honoree per month, not a
+/// wrapping event with a separate entries table. Deliberately, structurally
+/// incapable of ranking: no field on this model orders, scores, or
+/// compares learners against each other in any way.
+enum RecognitionCategory {
+  GENIUS_LEVEL_ADVANCEMENT
+  SERVICE
+  CHARACTER
+}
+
+model RecognitionNight {
+  id String @id @default(cuid())
+
+  learnerUserId      String              @map("learner_user_id")
+  circleId           String              @map("circle_id")
+  category           RecognitionCategory @map("category")
+  description        String              @db.Text
+  recognizedAt       DateTime            @default(now()) @map("recognized_at")
+  recognizedByUserId String              @map("recognized_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  learner      User   @relation("RecognitionNightLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  circle       Circle @relation(fields: [circleId], references: [id])
+  recognizedBy User   @relation("RecognitionNightRecognizedBy", fields: [recognizedByUserId], references: [id])
+
+  @@index([learnerUserId])
+  @@index([circleId, recognizedAt])
+  @@map("recognition_nights")
+}
+
+// ---------------------------------------------------------------------------
 // AI GATEWAY MODULE -- Phase 1 extension (data model only)
 // Architecture Spec Part Four: "GenieMemory (My Genie's structured memory
 // per learner, the source-of-truth table the pgvector index in Part Two is
@@ -956,6 +1260,16 @@ enum AuditEventType {
   /// own audit trail entry, the same reasoning already applied to role
   /// grants.
   MENTOR_ASSIGNED
+  /// Added Phase 2 -- New Parent workflow's own audit trail entry (Blueprint
+  /// 08 Part Four Section Eight: "produces: Family Learning Unit connected
+  /// to a Local Learning Circle"), distinct from `ROLE_GRANTED` since no
+  /// Role changes here.
+  FAMILY_CONNECTED_TO_CIRCLE
+  /// Added Phase 2 -- New Mentor Certification's own audit trail entry
+  /// (Architecture Spec Part Seven, Workflow 6), distinct from the generic
+  /// `ROLE_GRANTED` so the certifying office's qualifications/Teacher Creed
+  /// confirmation this workflow requires is findable as its own event kind.
+  MENTOR_CERTIFIED
 }
 
 /// The append-only record itself. No `updatedAt` field exists on this model,
