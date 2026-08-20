@@ -1,7 +1,7 @@
 {
   "vault": "DGENIE MODEL SCHOOLS",
   "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 — this manifest is a status board over that governance, never the other way around",
-  "lastMeaningfulUpdate": "2026-08-18",
+  "lastMeaningfulUpdate": "2026-08-19",
   "updateInstructions": "Edit only the \"status\" (and optionally \"note\") field on a task when real work happens. Valid statuses: not-started, in-progress, complete, blocked. Do not add, remove, or reorder tasks without checking them against the governing documents first. The server re-reads this file on every request, so a saved edit shows up the next time the dashboard polls, no restart needed.",
   "phases": [
     {
@@ -150,32 +150,38 @@
         {
           "id": "community-module",
           "label": "`community` module — Circle, Regional, National, Global membership",
-          "status": "not-started"
+          "status": "complete",
+          "note": "Circle, CircleMembership, Region, NationalCommunity live with RLS forced. No Global Community table — Blueprint 06 describes it as 'every DGENIE member worldwide,' not a queryable grouping. Family Learning Unit is the existing ParentLink relationship, not a new table — see new-parent.ts's own doc comment. Regional Steward tooling and the partial Mentor Control Tower are explicitly out of this task, per this phase's own non-goals."
         },
         {
           "id": "messaging-remainder",
           "label": "Remainder of `messaging` — day-to-day async text",
-          "status": "not-started"
+          "status": "complete",
+          "note": "DirectMessage (1:1) and CircleMessage (Circle-scoped) live with RLS forced. Kept deliberately minimal, per Architecture Spec Part Four's own text that this module needs 'no further elaboration' beyond the day-to-day text exchange its name implies — no threads/reactions/read-receipts structure invented."
         },
         {
           "id": "events-module",
           "label": "`events` module — Morning Spark, Circle Time, Recognition Night, Gatherings",
-          "status": "not-started"
+          "status": "complete",
+          "note": "MorningSpark (daily, staff-authored), CircleTime (weekly, tied to a Circle), Gathering (monthly, tied to a Region), RecognitionNight (monthly, one row per honoree — no rank/score field anywhere on that table, verified). Annual rhythms (Founders' Day, Masterpiece Showcase, Global Gathering, Legacy Induction) deliberately out of scope."
         },
         {
           "id": "parent-companion-agent",
           "label": "Parent Companion agent live",
-          "status": "not-started"
+          "status": "complete",
+          "note": "A real AgentDefinition row (Blueprint 14 Section Four, Agent Three content, verbatim), seeded and verified live — but isActive: false, same as My Genie's own row, per this phase's consistency decision: this build has no live-agent activation precedent yet, so Parent Companion doesn't go live first. Activates alongside the deferred-agent slice (My Genie/Teacher Assistant/Assessment Assistant), not before it."
         },
         {
           "id": "workflow-new-parent",
           "label": "New Parent workflow",
-          "status": "not-started"
+          "status": "complete",
+          "note": "connectFamilyToCircle (new-parent.ts): recognizes the ParentLink household, connects parent + linked learner(s) to a Circle, populates User.circleId. backfillCircleAssignments closes the Phase 1 Slice A deferral for any learner still carrying a null circleId. Human-only, Administrator-run, per this phase's consistency decision (no live Administrator AI)."
         },
         {
           "id": "workflow-new-mentor-certification",
           "label": "New Mentor Certification workflow (formal), closing the Phase 1 bootstrap gap",
-          "status": "not-started"
+          "status": "complete",
+          "note": "certifyNewMentor (certify-new-mentor.ts): Administrator-initiated, requires explicit qualifications-confirmed and Teacher-Creed-affirmed attestation, creates the MENTOR Role, reuses MENTOR_CASELOAD_CEILING from mentor-assignment.ts (not redefined). This is the real path Phase 1 Slice A's mentor-bootstrap.ts said was coming — every Mentor certified from here forward goes through this function, not the bootstrap script."
         },
         {
           "id": "same-faith-mentor-matching",
@@ -339,8 +345,8 @@
     },
     {
       "id": "tts-stt-webrtc-vendors",
-      "label": "TTS, STT, and WebRTC vendors are unselected.",
-      "detail": "Become live decisions the moment Phase 1 work actually starts."
+      "label": "TTS/STT/WebRTC vendor research done 2026-08-17; final selection awaits legal sign-off on data-handling terms.",
+      "detail": "Recommendation in OPERATIONAL MANUALS/TTS STT WEBRTC VENDOR RESEARCH AND RECOMMENDATION.md: Deepgram (Nova-3/Flux STT, Aura-2 TTS) as primary, LiveKit for WebRTC (cost + open-source self-hosting, consistent with the Architecture Spec's own vendor-independence principle). None of these vendors' COPPA/BIPA posture is publicly confirmed -- final contracting needs a direct vendor commitment or counsel review, per the legal briefing's Open Question 5. Language-coverage question resolved 2026-08-17: Version One is English-only (Architecture Spec Thirteenth revision note), so the earlier 'which Indigenous languages' gap no longer blocks vendor selection -- revisit when expansion is actually triggered."
     },
     {
       "id": "three-missing-tech-specs",
@@ -349,8 +355,8 @@
     },
     {
       "id": "devils-advocate-m3-m6-m8",
-      "label": "M3 (COPPA/biometric review) now specifically blocks My Genie's full pipeline task; M6 and M8 remain open.",
-      "detail": "Confirmed by Duncan 2026-08-17: the my-genie-full-pipeline Phase 1 task (live avatar, voice, speech-to-text from children as young as five) is held until M3 is resolved, rather than proceeding in parallel. Everything else in Phase 1 is unaffected. M6 and M8 not yet raised again by Duncan."
+      "label": "M3 (COPPA/biometric review) researched 2026-08-17; needs qualified legal counsel before My Genie's pipeline proceeds. M6, M8 still fully open.",
+      "detail": "Full findings in OPERATIONAL MANUALS/MY GENIE VOICE PIPELINE -- LEGAL BRIEFING FOR COUNSEL.md: the FTC's amended COPPA Rule (effective 2026-04-22) makes voiceprints regulated personal information requiring separate parental consent; Illinois BIPA and similar state laws add independent exposure; the FTC has an open 6(b) inquiry into AI companion chatbots for minors. Duncan is retaining counsel; nothing in my-genie-full-pipeline proceeds until they sign off. M6 and M8 not yet raised again by Duncan."
     }
   ]
 }
