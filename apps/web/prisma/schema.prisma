@@ -105,6 +105,9 @@ model User {
   genieMemory         GenieMemory?         @relation("GenieMemoryLearner")
   avatarConfiguration AvatarConfiguration? @relation("AvatarConfigurationLearner")
 
+  verifiableParentalConsentsAsParent  VerifiableParentalConsent[] @relation("VerifiableParentalConsentParent")
+  verifiableParentalConsentsAsLearner VerifiableParentalConsent[] @relation("VerifiableParentalConsentLearner")
+
   circleMemberships CircleMembership[] @relation("CircleMembershipUser")
 
   directMessagesSent     DirectMessage[] @relation("DirectMessageSender")
@@ -1127,12 +1130,21 @@ model AvatarConfiguration {
 
   learnerUserId String @unique @map("learner_user_id")
 
-  /// Write-once. Null until the thirteen-plus tier's Reveal sets it for the
-  /// first (and only) time; the RLS `avatar_configurations_update_never`
-  /// migration comment explains why no UPDATE grant exists for this table
-  /// at all rather than a narrower "only when currently null" policy -- this
-  /// task builds no code path that ever sets it, so there is nothing yet to
-  /// carve an exception for.
+  /// Write-once, per Architecture Spec Part Four: "write-once, set at the
+  /// Reveal and never updated by any later Season or Turning process,
+  /// application-layer and database-constrained against modification after
+  /// that first write." The consent-and-retention-scaffolding task (2026-08-
+  /// 21) is the first code path that ever sets it: `activateVoiceLock`
+  /// (src/modules/ai-gateway/voice-lock-activation.ts) `create()`s this row
+  /// exactly once per learner -- `learnerUserId`'s own `@unique` constraint
+  /// is the database-layer half of "write-once" (a second `create()` for the
+  /// same learner fails on that constraint, never silently overwrites), and
+  /// the accompanying RLS migration grants INSERT but never a general UPDATE
+  /// for setting this column, only a narrower, Administrator-scoped UPDATE
+  /// that may clear it back to null (the retention/destruction path,
+  /// src/modules/ai-gateway/voice-data-retention.ts) and can never set it to
+  /// a new non-null value. See that migration's own comments for the exact
+  /// policies.
   voiceId      String?   @map("voice_id")
   voiceIdSetAt DateTime? @map("voice_id_set_at")
 
@@ -1142,6 +1154,72 @@ model AvatarConfiguration {
   learner User @relation("AvatarConfigurationLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
 
   @@map("avatar_configurations")
+}
+
+/// The specific purposes a Verifiable Parental Consent record can cover.
+/// One member today -- Architecture Spec Part Five, thirteen-and-up
+/// paragraph (Nineteenth revision note): a consent covering the one-time
+/// voice lock specifically. Modeled as an enum rather than a free-text
+/// field so a future second purpose is an additive value, not a retrofit
+/// of this table's shape.
+enum VerifiableParentalConsentPurpose {
+  VOICE_LOCK_ACTIVATION
+}
+
+/// The FTC's more rigorous consent methods, and only those -- per counsel's
+/// reply of 2026-08-21 (`MY GENIE 13+ PIPELINE — FOLLOW-UP FIVE STILL-OPEN
+/// QUESTIONS — LEGAL BRIEFING FOR COUNSEL.md`, Question 1): "Because the
+/// voice data is disclosed to a third party (Deepgram), the lighter
+/// 'email-plus'/'text-plus' methods don't qualify." This enum's own
+/// membership is the structural enforcement of that exclusion, the same
+/// "impossible to represent the wrong thing" pattern `RoleType` and
+/// `PortfolioEntryType` already use elsewhere in this schema -- a lighter,
+/// COPPA-internal-use-only method is simply not a value this column can
+/// hold.
+enum VerifiableParentalConsentMethod {
+  KNOWLEDGE_BASED_AUTHENTICATION
+  PAYMENT_CARD_TRANSACTION
+  GOVERNMENT_ID_FACIAL_RECOGNITION
+}
+
+/// Records a completed Verifiable Parental Consent for the thirteen-and-up
+/// tier's one-time voice lock -- Architecture Spec Part Five, thirteen-and-
+/// up paragraph (Nineteenth revision note) and Blueprint 07 Part Six's
+/// parallel paragraph: "Verifiable Parental Consent is required through one
+/// of the more rigorous FTC-approved methods... The consent notice must
+/// name that vendor, the purpose, and the retention policy."
+///
+/// `disclosureText` captures the exact notice text shown to the parent at
+/// the moment of this specific consent, verbatim -- not a foreign key to
+/// the versioned notice content in src/modules/ai-gateway/voice-lock-
+/// consent-notice.ts, deliberately: a future revision to that content's
+/// wording must never rewrite what a real parent was actually shown on a
+/// given date, per this task's own instruction.
+///
+/// Append-only, the same pattern as `AuditLogEntry`: no UPDATE or DELETE
+/// grant exists for `dgenie_app` on this table at all (see the accompanying
+/// RLS migration) -- a consent record, once given, is never edited, only
+/// superseded by a later row if a family re-consents.
+model VerifiableParentalConsent {
+  id String @id @default(cuid())
+
+  parentUserId  String @map("parent_user_id")
+  learnerUserId String @map("learner_user_id")
+
+  purpose  VerifiableParentalConsentPurpose @map("purpose")
+  method   VerifiableParentalConsentMethod  @map("method")
+  verified Boolean                          @map("verified")
+
+  /// Verbatim, per this model's own doc comment above.
+  disclosureText String @map("disclosure_text") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  parent  User @relation("VerifiableParentalConsentParent", fields: [parentUserId], references: [id], onDelete: Cascade)
+  learner User @relation("VerifiableParentalConsentLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+
+  @@index([learnerUserId, purpose])
+  @@map("verifiable_parental_consents")
 }
 
 // ---------------------------------------------------------------------------
