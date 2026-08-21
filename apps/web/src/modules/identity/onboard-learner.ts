@@ -1,4 +1,4 @@
-import type { Prisma, Track } from "@prisma/client";
+import type { FaithBackground, Prisma, Track } from "@prisma/client";
 
 import { runAsUser } from "@/lib/db/rls";
 
@@ -18,7 +18,17 @@ export class MinorRequiresParentLinkError extends Error {
   }
 }
 
-function isMinor(dateOfBirth: Date, asOf: Date = new Date()): boolean {
+/**
+ * Exported for the Mentor rotation task (src/modules/identity/mentor-
+ * handoff.ts): "reuse whatever age-appropriateness check already exists
+ * elsewhere in this codebase rather than inventing a new one." This is that
+ * check -- previously private to this file's own `MinorRequiresParentLinkError`
+ * gate, now the shared definition of "minor" both this file's own
+ * ParentLink requirement and `MentorHandoff`'s own family-inclusion flag
+ * are computed against, rather than two independently-maintained age
+ * thresholds that could quietly drift apart.
+ */
+export function isMinor(dateOfBirth: Date, asOf: Date = new Date()): boolean {
   let age = asOf.getFullYear() - dateOfBirth.getFullYear();
   const hasHadBirthdayThisYear =
     asOf.getMonth() > dateOfBirth.getMonth() ||
@@ -72,6 +82,17 @@ export async function onboardLearner({
     name: string;
     dateOfBirth: Date;
     track: Track;
+    /**
+     * Optional, per Blueprint 11 Section Four and Blueprint 12 Section
+     * Five: "a family that chooses the Christian-specific version [of
+     * Spiritual Formation] may separately request a Mentor who shares that
+     * faith background." Omitted (the default for every other family, per
+     * Blueprint 12 Section Five's own text) means assigned "without faith
+     * background as a factor," identical to today's behavior. See
+     * `findMentorWithCapacityTx` (mentor-assignment.ts) for how this is
+     * honored, never required.
+     */
+    faithBackgroundPreference?: FaithBackground | null;
   };
   /** Required when the learner is a minor; the parent's existing User id. */
   parentUserId?: string;
@@ -93,6 +114,7 @@ export async function onboardLearner({
         name: learner.name,
         dateOfBirth: learner.dateOfBirth,
         track: learner.track,
+        faithBackgroundPreference: learner.faithBackgroundPreference,
       },
     });
 
@@ -135,7 +157,10 @@ export async function onboardLearner({
     await tx.genieMemory.create({ data: { learnerUserId: learnerUser.id } });
 
     const resolvedMentorRoleId =
-      mentorRoleId ?? (await findMentorWithCapacityTx(tx))?.mentorRoleId ?? null;
+      mentorRoleId ??
+      (await findMentorWithCapacityTx(tx, { faithBackgroundPreference: learner.faithBackgroundPreference }))
+        ?.mentorRoleId ??
+      null;
     if (!resolvedMentorRoleId) {
       throw new NoMentorCapacityError();
     }

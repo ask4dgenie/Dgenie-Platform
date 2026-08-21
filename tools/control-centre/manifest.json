@@ -1,7 +1,7 @@
 {
   "vault": "DGENIE MODEL SCHOOLS",
   "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 — this manifest is a status board over that governance, never the other way around",
-  "lastMeaningfulUpdate": "2026-08-21",
+  "lastMeaningfulUpdate": "2026-08-22",
   "updateInstructions": "Edit only the \"status\" (and optionally \"note\") field on a task when real work happens. Valid statuses: not-started, in-progress, complete, blocked. Do not add, remove, or reorder tasks without checking them against the governing documents first. The server re-reads this file on every request, so a saved edit shows up the next time the dashboard polls, no restart needed.",
   "phases": [
     {
@@ -198,7 +198,8 @@
         {
           "id": "same-faith-mentor-matching",
           "label": "Same-faith Mentor matching preference, captured at enrollment",
-          "status": "not-started"
+          "status": "in-progress",
+          "note": "Blueprint 11 Section Four; Blueprint 12 Section Five. FaithBackground enum (one member, CHRISTIAN, matching Blueprint 03's Christian-specific Spiritual Formation option — the only case governance currently names), User.faithBackgroundPreference (captured at New Learner Onboarding, onboard-learner.ts) and Role.mentorFaithBackground (captured at New Mentor Certification, certify-new-mentor.ts, optional and never a qualification requirement). findMentorWithCapacityTx (mentor-assignment.ts) honors the preference where a matching Mentor has capacity, falling back to the first Mentor with capacity regardless of background otherwise — a preference among eligible candidates, never a filter, per Blueprint 11 Section Four's own explicit text. Honored at both first assignment (onboarding) and rotation/renewal (mentor-rotation.ts). Marked in-progress, not complete, because the Blueprint 12 Section Five enrollment pairing this preference is meant to sit alongside (the Christian-specific vs. non-doctrinal Spiritual Formation choice itself) is not modeled anywhere in this codebase — curriculum content beyond Domain Nine remains out of built scope — so this field is captured independently rather than as the 'recorded alongside' pairing governance describes."
         },
         {
           "id": "control-tower-partial",
@@ -208,7 +209,8 @@
         {
           "id": "mentor-rotation-operational",
           "label": "Mentor five-year rotation, operational workflow (renewal, handoff protocol)",
-          "status": "not-started"
+          "status": "in-progress",
+          "note": "Blueprint 11 Section Four (term/rotation rules); Blueprint 07 Parts Two and Five (the continuity guarantee and handoff protocol Section Four forward-references without specifying). resolveMentorRotationDue (mentor-rotation.ts): pure computation of the standard five-year term, the one-renewal/ten-year hard ceiling, and the Legacy-Induction end point — fully implemented and tested. executeMentorRotation: the continuity guarantee (a learner is never observed with zero active MentorAssignment rows) is the literal enforcement, not a comment — incoming assignment created before the outgoing one is closed, proven by a test that a failed incoming-Mentor creation leaves the outgoing assignment's own validity window completely untouched. MentorHandoff model + scheduleMentorHandoff/completeMentorHandoff (mentor-handoff.ts): captures Part Five's three named content fields, family-inclusion computed via onboard-learner.ts's own reused isMinor check, RLS scoped to the three named parties plus the learner's parent(s) for read, only the two named Mentor Roles for write, closed once complete. NOT marked complete: (1) the Disruption-pause check (hasActiveDisruptionTransition) is a caller-supplied boolean stand-in, not a real query — no Disruption-transition tracking exists anywhere in this codebase; (2) the handoff record is described in its own doc comment as modeled on, not identical to, Blueprint 04's Transition Conversation entity, which also doesn't exist in code; (3) Blueprint 11 Section Four's Circle One extended-first-term exception is not implemented (out of this task's own stated scope, and no Circle/Discovery-pathway-stage data exists to compute it against). See the openBlockers entry 'mentor-rotation-transition-framework-gap'."
         }
       ]
     },
@@ -374,6 +376,11 @@
       "id": "my-genie-thirteen-plus-procurement-prerequisites",
       "label": "My Genie 13+ tier: 2 outstanding items, both Duncan's own procurement work — not legal review, which is complete.",
       "detail": "OPERATIONAL MANUALS/MY GENIE 13+ PIPELINE — FOLLOW-UP FIVE STILL-OPEN QUESTIONS — LEGAL BRIEFING FOR COUNSEL.md's 'Counsel's reply, received 2026-08-21' section: 'the top tier's legal review is now substantively complete... What remains before my-genie-thirteen-plus-pipeline can be built is procurement, not law: a consent-method vendor, and the same countersigned Deepgram DPA the 5-13 tier is also waiting on.' (1) A Verifiable Parental Consent (VPC) method vendor — DGENIE must contract with a provider of one of the FTC's more rigorous methods (knowledge-based authentication, a payment-card transaction, or the facial-recognition government-ID method); none is selected, and src/modules/ai-gateway/verifiable-parental-consent.ts's VerifiableParentalConsentProvider is built and tested only against a stub. (2) The countersigned Deepgram DPA — the same unsigned agreement already blocking the 5-13 tier (see 'my-genie-five-to-thirteen-remaining-prerequisites' above); the 13+ tier's own TTS/STT usage depends on the identical signature. Neither item is a build task — both are Duncan's own vendor-selection and contracting work."
+    },
+    {
+      "id": "mentor-rotation-transition-framework-gap",
+      "label": "Blueprint 04's general Transition framework has no manifest task and no code anywhere — Mentor rotation's Disruption-pause and handoff fidelity are best-effort, not verified against a real signal.",
+      "detail": "Blueprint 04 Part Twenty-Four ('Learner Transition and Life Navigation') names six transition types, a general Transition entity, and the Transition Conversation format — none of it has a table, a module, or a manifest task in this codebase. The Mentor rotation task (mentor-rotation-operational) needs two pieces of it that don't exist: a real Disruption-transition signal to pause a scheduled rotation against (Blueprint 07 Part Five), and the Transition Conversation format the MentorHandoff record is supposed to be modeled on (src/modules/identity/mentor-handoff.ts). Built against honest stand-ins instead — hasActiveDisruptionTransition is a caller-supplied boolean with no real query behind it (mentor-rotation.ts's resolveMentorRotationDue), and MentorHandoff's own doc comment (schema.prisma) states plainly it is not a claim of fidelity to Blueprint 04's actual entity. Until the general Transition framework is scoped and built as its own task, any rotation-pause decision and any handoff record's resemblance to the governance-described format rest on whatever the calling code supplies, not on a verified platform signal."
     },
     {
       "id": "devils-advocate-m3-m6-m8",

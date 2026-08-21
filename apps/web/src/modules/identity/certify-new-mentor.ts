@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { FaithBackground, Prisma } from "@prisma/client";
 
 import { runAsUser } from "@/lib/db/rls";
 
@@ -81,12 +81,25 @@ export async function certifyNewMentor({
   mentorUserId,
   qualificationsConfirmed,
   teacherCreedAffirmed,
+  faithBackground,
   notes,
 }: {
   administratorUserId: string;
   mentorUserId: string;
   qualificationsConfirmed: boolean;
   teacherCreedAffirmed: boolean;
+  /**
+   * Optional -- added for the Mentor rotation task, Blueprint 11 Section
+   * Four: a Mentor's own faith background, recorded so a same-faith match
+   * (`findMentorWithCapacityTx`, mentor-assignment.ts) has something real to
+   * compare a family's `User.faithBackgroundPreference` against. Never a
+   * certification requirement: this Section's own qualification bar is
+   * explicit that a Mentor "is not thereby less qualified" for not sharing,
+   * or not stating, any particular faith background, so this field is
+   * optional here the same way the preference itself is optional at
+   * onboarding.
+   */
+  faithBackground?: FaithBackground | null;
   notes?: string;
 }) {
   if (!qualificationsConfirmed) {
@@ -109,6 +122,7 @@ export async function certifyNewMentor({
         userId: mentorUserId,
         roleType: "MENTOR",
         grantedByUserId: administratorUserId,
+        mentorFaithBackground: faithBackground,
         notes: [
           "New Mentor Certification (Architecture Spec Part Seven, Workflow 6).",
           "Qualifications confirmed and Teacher Creed affirmed, attested by the initiating Administrator",
