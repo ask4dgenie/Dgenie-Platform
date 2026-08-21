@@ -25,6 +25,39 @@ export class MentorRoleInvalidError extends Error {
 }
 
 /**
+ * The one counting query behind every "how many active learners does this
+ * Mentor hold right now" question in this codebase -- `assignMentorTx` and
+ * `findMentorWithCapacityTx` below, and the Mentor Control Tower's own
+ * caseload signal (src/modules/identity/mentor-control-tower.ts), all call
+ * this rather than each writing their own `mentorAssignment.count`, per
+ * that task's own explicit instruction not to "reimplement" this count a
+ * second time.
+ *
+ * `excludeLearnerUserId` (added for the Mentor rotation task): omit it for
+ * a plain headcount read (the Control Tower's own use -- there is no
+ * specific learner being inserted, just a point-in-time count). Pass it
+ * when evaluating whether inserting or continuing a *specific* learner's
+ * row would tip a Mentor over the ceiling (`assignMentorTx`,
+ * `findMentorWithCapacityTx`) -- that learner's own currently-active row,
+ * if one exists, is excluded, so a same-Mentor renewal (which changes that
+ * Mentor's real caseload by zero, not by one) is never double-counted
+ * against the ceiling. See the `MentorAssignment` model's own doc comment
+ * in schema.prisma for the fuller reasoning.
+ */
+export async function countActiveMentorCaseloadTx(
+  tx: Prisma.TransactionClient,
+  { mentorRoleId, excludeLearnerUserId }: { mentorRoleId: string; excludeLearnerUserId?: string },
+): Promise<number> {
+  return tx.mentorAssignment.count({
+    where: {
+      mentorRoleId,
+      validTo: null,
+      ...(excludeLearnerUserId ? { learnerUserId: { not: excludeLearnerUserId } } : {}),
+    },
+  });
+}
+
+/**
  * Finds an active Mentor Role with capacity under the ceiling above.
  * Architecture Spec Part Seven Workflow 1: an Administrator "assigns a first
  * Mentor from available caseload capacity." A simple first-fit search, not a
@@ -75,14 +108,9 @@ export async function findMentorWithCapacityTx(
   }> = [];
 
   for (const mentorRole of mentorRoles) {
-    const activeCaseload = await tx.mentorAssignment.count({
-      where: {
-        mentorRoleId: mentorRole.id,
-        validTo: null,
-        ...(options.excludeCaseloadForLearnerUserId
-          ? { learnerUserId: { not: options.excludeCaseloadForLearnerUserId } }
-          : {}),
-      },
+    const activeCaseload = await countActiveMentorCaseloadTx(tx, {
+      mentorRoleId: mentorRole.id,
+      excludeLearnerUserId: options.excludeCaseloadForLearnerUserId,
     });
     if (activeCaseload < MENTOR_CASELOAD_CEILING) {
       candidatesWithCapacity.push({
@@ -162,9 +190,7 @@ export async function assignMentorTx(
     throw new MentorRoleInvalidError(mentorRoleId);
   }
 
-  const activeCaseload = await tx.mentorAssignment.count({
-    where: { mentorRoleId, validTo: null, learnerUserId: { not: learnerUserId } },
-  });
+  const activeCaseload = await countActiveMentorCaseloadTx(tx, { mentorRoleId, excludeLearnerUserId: learnerUserId });
   if (activeCaseload >= MENTOR_CASELOAD_CEILING) {
     throw new MentorCaseloadFullError(mentorRoleId);
   }
