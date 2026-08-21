@@ -23,8 +23,15 @@ import { runAsUser } from "@/lib/db/rls";
 const HOME_TRACK_REFLECTION_INTERVAL_HOURS = 24;
 const MEMBERSHIP_TRACK_REFLECTION_INTERVAL_DAYS = 14;
 
-/** Blueprint 04 Part Thirteen's "Cadence": Home Track weekly, Membership Track biweekly. */
-const MENTOR_CHECK_IN_INTERVAL_DAYS: Record<Track, number> = {
+/**
+ * Blueprint 04 Part Thirteen's "Cadence": Home Track weekly, Membership
+ * Track biweekly. Exported for the Mentor Control Tower task
+ * (src/modules/identity/mentor-control-tower.ts), which rolls this same
+ * per-learner overdue check up across a Mentor's whole caseload -- reusing
+ * this constant and `isMentorCheckInDueTx` below rather than reinventing
+ * the cadence numbers, per that task's own explicit instruction.
+ */
+export const MENTOR_CHECK_IN_INTERVAL_DAYS: Record<Track, number> = {
   HOME: 7,
   MEMBERSHIP: 14,
 };
@@ -83,28 +90,43 @@ export async function submitWeeklyReflection({
 }
 
 /**
- * Whether the learner's assigned Mentor is due for a scheduled check-in,
- * per Blueprint 04 Part Thirteen's Cadence text, checked against the most
+ * Whether a learner's assigned Mentor is due for a scheduled check-in, per
+ * Blueprint 04 Part Thirteen's Cadence text, checked against the most
  * recent `MentorSessionTranscript` (scheduled or completed) on file.
+ *
+ * Takes an already-open transaction client, the same `-Tx` pattern
+ * `assignMentorTx`/`findMentorWithCapacityTx` (mentor-assignment.ts)
+ * already establish, so a caller whose own RLS-scoped session is not this
+ * specific learner's own -- the Mentor Control Tower rollup, running as the
+ * requesting Regional Steward or Administrator, checking this for every
+ * learner across a Mentor's caseload in one transaction -- can reuse the
+ * identical overdue logic without each learner needing their own separate
+ * `runAsUser` session. `isMentorCheckInDue` below is the single-learner
+ * convenience wrapper this function always previously was.
  */
+export async function isMentorCheckInDueTx(
+  tx: Prisma.TransactionClient,
+  { learnerUserId, track, now = new Date() }: { learnerUserId: string; track: Track; now?: Date },
+): Promise<boolean> {
+  const lastSession = await tx.mentorSessionTranscript.findFirst({
+    where: { learnerUserId },
+    orderBy: { scheduledFor: "desc" },
+    select: { scheduledFor: true },
+  });
+  if (!lastSession) return true;
+
+  const daysSinceLastSession = (now.getTime() - lastSession.scheduledFor.getTime()) / (1000 * 60 * 60 * 24);
+  return daysSinceLastSession >= MENTOR_CHECK_IN_INTERVAL_DAYS[track];
+}
+
 export async function isMentorCheckInDue({
   learnerUserId,
   track,
-  now = new Date(),
+  now,
 }: {
   learnerUserId: string;
   track: Track;
   now?: Date;
 }): Promise<boolean> {
-  return runAsUser(learnerUserId, async (tx) => {
-    const lastSession = await tx.mentorSessionTranscript.findFirst({
-      where: { learnerUserId },
-      orderBy: { scheduledFor: "desc" },
-      select: { scheduledFor: true },
-    });
-    if (!lastSession) return true;
-
-    const daysSinceLastSession = (now.getTime() - lastSession.scheduledFor.getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceLastSession >= MENTOR_CHECK_IN_INTERVAL_DAYS[track];
-  });
+  return runAsUser(learnerUserId, (tx) => isMentorCheckInDueTx(tx, { learnerUserId, track, now }));
 }

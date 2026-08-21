@@ -200,6 +200,15 @@ model VerificationToken {
 /// schema-level impossibility, not an application-layer check that can be
 /// forgotten (Architecture Spec Part Six's "deliberate redundancy" principle
 /// applied one layer earlier than RLS).
+///
+/// `REGIONAL_STEWARD`, added for the Mentor Control Tower task, is a
+/// sixteenth value -- a genuine constitutional office (Blueprint 08 Part
+/// One, Section Three), not one of Blueprint 08 Part Four Section Five's
+/// original fifteen operational roles, but modeled the same way every other
+/// role in this platform is: a typed `RoleType` value with a `Role` row,
+/// not a special-cased flag elsewhere. Checked directly against the live
+/// database before this task added it: fifteen values existed, none of
+/// them this.
 enum RoleType {
   LEARNER
   PARENT
@@ -216,6 +225,7 @@ enum RoleType {
   INDUSTRY_EXPERT
   ALUMNI
   COMMUNITY_PARTNER
+  REGIONAL_STEWARD
 }
 
 /// A typed assignment of a User to one of the fifteen roles, WITH a validity
