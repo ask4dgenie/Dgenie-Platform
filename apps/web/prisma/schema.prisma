@@ -61,6 +61,28 @@ model User {
   /// directly.
   track Track? @map("track")
 
+  /// A family's (or, for an adult learner, the learner's own) requested
+  /// Mentor faith-background match -- Blueprint 11 Section Four: "a family
+  /// that chooses the Christian-specific version [of Spiritual Formation]
+  /// may separately request a Mentor who shares that faith background";
+  /// Blueprint 12 Section Five: "recorded alongside" the family's Spiritual
+  /// Formation enrollment choice. Null means no preference stated -- the
+  /// same "assigned the same way every other Mentor assignment already
+  /// works, without faith background as a factor" default Blueprint 12
+  /// Section Five states explicitly. Captured at New Learner Onboarding
+  /// (src/modules/identity/onboard-learner.ts) and honored, never required,
+  /// at every later rotation or renewal (src/modules/identity/mentor-
+  /// rotation.ts) -- see `findMentorWithCapacityTx`'s own doc comment
+  /// (mentor-assignment.ts) for how "honored where caseload allows, never a
+  /// qualification filter" is enforced. This document's own Spiritual
+  /// Formation enrollment choice (Christian-specific vs. non-doctrinal) is
+  /// not itself modeled anywhere in this codebase yet -- `curriculum`
+  /// carries only Domain Nine's content per Phase 1 Slice A's own scope --
+  /// so this field is captured independently of that choice rather than
+  /// gated behind it, a narrower slice of Blueprint 12 Section Five's full
+  /// enrollment-choice pairing than governance itself describes.
+  faithBackgroundPreference FaithBackground? @map("faith_background_preference")
+
   /// New Learner Onboarding's own text requires assigning a Local Learning
   /// Circle; Phase 1 Slice A left this a bare nullable id with no FK (no
   /// `circles` table existed yet). Phase 2's New Parent workflow
@@ -92,6 +114,8 @@ model User {
 
   mentorAssignmentsAsLearner  MentorAssignment[] @relation("MentorAssignmentLearner")
   mentorAssignmentsAsAssignor MentorAssignment[] @relation("MentorAssignmentAssignedBy")
+
+  mentorHandoffsAsLearner MentorHandoff[] @relation("MentorHandoffLearner")
 
   mentorSessionTranscriptsAsLearner MentorSessionTranscript[] @relation("MentorSessionTranscriptLearner")
 
@@ -227,6 +251,21 @@ model Role {
 
   notes String?
 
+  /// A Mentor's own faith background, meaningful only when `roleType =
+  /// MENTOR` -- the other side of `User.faithBackgroundPreference`'s match.
+  /// Captured at New Mentor Certification (src/modules/identity/certify-
+  /// new-mentor.ts), optional there the same way the preference itself is
+  /// optional for a family: Blueprint 11 Section Four is explicit a Mentor
+  /// who does not share, or has not stated, a faith background "is not
+  /// thereby less qualified" -- this column exists to make a match
+  /// possible where both sides have stated one, never to gate
+  /// certification itself. Not validated against `roleType` at the schema
+  /// level (Prisma has no per-variant-field constraint); left as an
+  /// honest, documented convention the same way this table already leaves
+  /// several other fields meaningful only for specific role types (e.g.
+  /// `mentorAssignments` below is empty for every non-MENTOR role).
+  mentorFaithBackground FaithBackground? @map("mentor_faith_background")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -238,6 +277,8 @@ model Role {
   mentorAssignments             MentorAssignment[]        @relation("MentorAssignmentMentorRole")
   mentorSessionTranscripts      MentorSessionTranscript[] @relation("MentorSessionTranscriptMentorRole")
   certificationRecordsCertified CertificationRecord[]     @relation("CertificationRecordCertifiedByRole")
+  mentorHandoffsAsOutgoing      MentorHandoff[]           @relation("MentorHandoffOutgoingMentorRole")
+  mentorHandoffsAsIncoming      MentorHandoff[]           @relation("MentorHandoffIncomingMentorRole")
 
   @@index([userId, roleType])
   @@index([roleType, validTo])
@@ -284,6 +325,20 @@ model ParentLink {
 enum Track {
   HOME
   MEMBERSHIP
+}
+
+/// The one faith background Blueprint 03's Spiritual Formation Dimension
+/// currently names a Christian-specific alternative for (its own
+/// non-doctrinal option requires no Mentor faith-background match at all,
+/// per Blueprint 12 Section Five's own text -- there is nothing to match
+/// against for a family that chose it). One member today, the same
+/// "additive later, not conflated now" pattern `VerifiableParentalConsentPurpose`
+/// already uses elsewhere in this schema (PR#5) -- not a general-purpose
+/// religion/denomination enum, since governance names only this one case.
+/// Used both as a family's requested preference (`User.faithBackgroundPreference`)
+/// and a Mentor's own recorded background (`Role.mentorFaithBackground`).
+enum FaithBackground {
+  CHRISTIAN
 }
 
 /// One row per run of a scheduled Mentor-learner cadence session (Weekly
@@ -353,6 +408,22 @@ model MentorSessionTranscript {
 /// active assignments for the target Mentor's Role and refuses the insert at
 /// twenty. This is a headcount query, not a payment calculation -- it does
 /// not require and is not gated on the `compensation` module.
+///
+/// The Mentor five-year rotation task (Blueprint 11 Section Four) is the
+/// "will need to reassign a learner to a new Mentor" work this doc comment
+/// already anticipated, built in src/modules/identity/mentor-rotation.ts.
+/// A renewal (the same Mentor continuing for a second, capped term) and a
+/// rotation (a different incoming Mentor) are both modeled the same way: a
+/// new row for the learner, the prior row's `validTo` closed in the same
+/// operation. The ceiling check above counts every OTHER learner already
+/// active under the target Mentor, deliberately excluding this specific
+/// learner's own currently-active row from the count -- needed for a
+/// same-Mentor renewal to be evaluated correctly (it changes that Mentor's
+/// real caseload by zero, not by one), and harmless for a genuine rotation
+/// (the learner's outgoing row is for a different Mentor Role entirely, so
+/// it was never part of the incoming Mentor's own count to begin with). See
+/// mentor-rotation.ts's own top comment for the full continuity guarantee
+/// this composes with.
 model MentorAssignment {
   id String @id @default(cuid())
 
@@ -375,6 +446,81 @@ model MentorAssignment {
   @@index([learnerUserId, validTo])
   @@index([mentorRoleId, validTo])
   @@map("mentor_assignments")
+}
+
+/// The handoff record Blueprint 07 Part Five's "Planned Mentor rotation and
+/// handoff" standard requires: "The handoff itself runs as a structured
+/// conversation, modeled on Blueprint 04's Transition Conversation format
+/// and adapted here for an institution-initiated event rather than a
+/// learner-initiated one: what the outgoing Mentor has learned about this
+/// learner that's worth carrying forward, what is currently in progress and
+/// should not be dropped, and what the learner should expect from the new
+/// relationship, held jointly by the outgoing Mentor, the incoming Mentor,
+/// and the learner, with the family included where age-appropriate per Part
+/// Four." "It is scheduled with real advance notice once a rotation date is
+/// known, never sprung on the day a term ends."
+///
+/// __Named as a stand-in, not a claim of fidelity to Blueprint 04.__
+/// Blueprint 04 Part Twenty-Four's general Transition Conversation entity
+/// (the format this record is modeled on) has no table or module anywhere
+/// in this codebase -- no six-type Transition entity, no Disruption-
+/// transition tracking. This model captures exactly what Part Five's own
+/// paragraph names above, and only that; it is not, and does not claim to
+/// be, an implementation of the general Transition Conversation entity
+/// Blueprint 04 describes, which remains real, separate, unscoped work.
+/// See mentor-rotation.ts's own top comment for the identical stand-in
+/// reasoning applied to the Disruption-pause check.
+///
+/// `scheduledFor` is set when this row is created, before the conversation
+/// happens; the three content fields and `completedAt` are filled in
+/// together once it does (src/modules/identity/mentor-handoff.ts's
+/// `completeMentorHandoff`) -- a row can exist in a genuinely
+/// not-yet-conducted state, matching "scheduled ... never sprung on the day
+/// a term ends."
+model MentorHandoff {
+  id String @id @default(cuid())
+
+  learnerUserId        String @map("learner_user_id")
+  outgoingMentorRoleId String @map("outgoing_mentor_role_id")
+  incomingMentorRoleId String @map("incoming_mentor_role_id")
+
+  scheduledFor DateTime  @map("scheduled_for")
+  completedAt  DateTime? @map("completed_at")
+
+  /// What the outgoing Mentor has learned about this learner that's worth
+  /// carrying forward. Null until `completeMentorHandoff` runs.
+  carryForwardNotes String? @map("carry_forward_notes") @db.Text
+
+  /// What is currently in progress and should not be dropped. Null until
+  /// `completeMentorHandoff` runs.
+  inProgressNotes String? @map("in_progress_notes") @db.Text
+
+  /// What the learner should expect from the new relationship. Null until
+  /// `completeMentorHandoff` runs.
+  expectationsForLearner String? @map("expectations_for_learner") @db.Text
+
+  /// Whether the learner's family took part in this specific handoff
+  /// conversation -- Part Five's own "with the family included where
+  /// age-appropriate per Part Four," computed once at scheduling time via
+  /// the same age-of-minority check `onboard-learner.ts` already uses for
+  /// its own ParentLink requirement (src/modules/identity/onboard-
+  /// learner.ts's exported `isMinor`), reused rather than reinvented, per
+  /// this task's own instruction. Distinct from, and does not gate, a
+  /// parent's own read access to this record -- see the accompanying RLS
+  /// migration's own comment for why parent visibility is unconditional
+  /// here, the same transparency principle `MentorSessionTranscript`
+  /// already carries.
+  familyIncluded Boolean @map("family_included")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner            User @relation("MentorHandoffLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+  outgoingMentorRole Role @relation("MentorHandoffOutgoingMentorRole", fields: [outgoingMentorRoleId], references: [id])
+  incomingMentorRole Role @relation("MentorHandoffIncomingMentorRole", fields: [incomingMentorRoleId], references: [id])
+
+  @@index([learnerUserId])
+  @@map("mentor_handoffs")
 }
 
 // ---------------------------------------------------------------------------
@@ -1410,6 +1556,20 @@ enum AuditEventType {
   /// `ROLE_GRANTED` so the certifying office's qualifications/Teacher Creed
   /// confirmation this workflow requires is findable as its own event kind.
   MENTOR_CERTIFIED
+  /// Added for the Mentor rotation task -- `MentorAssignment`'s own
+  /// continuity-guaranteed swap (mentor-rotation.ts), covering both a
+  /// rotation (a new Mentor) and a renewal (the same Mentor's second,
+  /// capped term); `metadata.isRenewal` distinguishes them, per Blueprint
+  /// 11 Section Four.
+  MENTOR_ROTATED
+  /// Added for the Mentor rotation task -- `MentorHandoff` scheduled,
+  /// Blueprint 07 Part Five: "scheduled with real advance notice."
+  MENTOR_HANDOFF_SCHEDULED
+  /// Added for the Mentor rotation task -- `MentorHandoff` completed (the
+  /// three content fields filled in, `completedAt` set), the point after
+  /// which the RLS write window this record's own doc comment describes
+  /// closes.
+  MENTOR_HANDOFF_COMPLETED
 }
 
 /// The append-only record itself. No `updatedAt` field exists on this model,
