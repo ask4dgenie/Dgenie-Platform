@@ -1,5 +1,11 @@
 import type { Prisma } from "@prisma/client";
 
+import {
+  AVATAR_VOICE_LOCK_WRITE_TOOL,
+  LIVE_SPEECH_TO_TEXT_TOOL,
+  LIVE_VOICE_SYNTHESIS_TOOL,
+} from "./my-genie-tool-gating";
+
 /**
  * My Genie's AgentDefinition -- the one real row Phase 0 populates.
  * Architecture Spec Part Nine: "the Agent Gateway skeleton (with only My
@@ -10,9 +16,23 @@ import type { Prisma } from "@prisma/client";
  * Key Functions and Data Access are this Blueprint's own contribution."
  *
  * This is a configuration record, not a live integration -- `isActive:
- * false` and `toolAllowlist: []` reflect Part Nine's own framing precisely:
- * "No working conversation, no live LLM calls yet." Flipping either of those
- * on is Phase 1 work, not implied by this row's existence.
+ * false` reflects Part Nine's own framing precisely: "No working
+ * conversation, no live LLM calls yet." Flipping it on is later work, not
+ * implied by this row's existence.
+ *
+ * `toolAllowlist` below is no longer empty as of the three-tier gating task
+ * (Architecture Spec Part Five, Fourteenth/Fifteenth revision notes;
+ * Blueprint 07 Part Six): it now names the three tools the three-tier gate
+ * narrows -- live speech-to-text, live voice synthesis, and the avatar
+ * voice-lock write. Naming them here, on the base row, is what gives
+ * `resolveEffectiveToolAllowlist` (src/modules/ai-gateway/my-genie-tool-
+ * gating.ts) something real to filter: the gateway's boundary is "what it
+ * does not expose," which requires a base list that does expose them before
+ * any tier narrows it back down. None of the three tools has an integration
+ * behind it yet (no Deepgram/ElevenLabs/LiveKit call exists in this
+ * codebase) -- naming a tool identifier here is not the same claim as the
+ * tool being callable, and `isActive: false` below means no call reaches
+ * this row's system prompt or tool list at all yet regardless.
  */
 export const myGenieDefinition = {
   agentKey: "my-genie",
@@ -50,12 +70,17 @@ export const myGenieDefinition = {
     "to a learner's human Mentor. You do not attempt to resolve these yourself.",
   ].join("\n"),
 
-  // Phase 0: no live tool-calling integration exists (Part Nine non-goal).
+  // The three tools the three-tier live-interaction gate narrows (see the
+  // module comment above and src/modules/ai-gateway/my-genie-tool-gating.ts).
   // A certifying action (e.g. a hypothetical `certify_genius_level`) must
   // never appear in this list for any agent, at any phase -- Architecture
   // Spec Part Five's central claim, that the boundary is what the gateway
-  // does not expose.
-  toolAllowlist: [] as string[],
+  // does not expose, not an instruction the model is trusted to obey.
+  toolAllowlist: [
+    LIVE_SPEECH_TO_TEXT_TOOL,
+    LIVE_VOICE_SYNTHESIS_TOOL,
+    AVATAR_VOICE_LOCK_WRITE_TOOL,
+  ] as string[],
 
   // Blueprint 14 Section Four, Agent One: "Data access" -- "the learner's own
   // Genius Portfolio and Genie conversation history, per the Ownership and
@@ -80,6 +105,17 @@ export const myGenieDefinition = {
   // gated below age five, enforced by what the gateway does not expose. This
   // column is the structural hook; Phase 1 builds the pipeline it gates.
   minimumLearnerAge: 5,
+
+  // Architecture Spec Part Five, the second of the three-tier design's two
+  // thresholds (Fourteenth/Fifteenth revision notes; Blueprint 07 Part Six):
+  // below this age, live speech-to-text is exposed but real-time voice
+  // synthesis and the avatar voice-lock write are not -- the gateway replies
+  // in text only. At and above it, the full pipeline applies. See
+  // src/modules/ai-gateway/my-genie-tool-gating.ts for the logic this value
+  // drives, and schema.prisma's own doc comment on this column for why it is
+  // a second, separate nullable field rather than folded into
+  // `minimumLearnerAge`.
+  voiceSynthesisMinimumAge: 13,
 
   // Configuration record, not a live integration (Part Nine).
   isActive: false,

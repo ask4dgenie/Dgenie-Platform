@@ -102,7 +102,8 @@ model User {
   certificationRecordsAsLearner   CertificationRecord[] @relation("CertificationRecordLearner")
   certificationRecordsAsCertifier CertificationRecord[] @relation("CertificationRecordCertifiedBy")
 
-  genieMemory GenieMemory? @relation("GenieMemoryLearner")
+  genieMemory         GenieMemory?         @relation("GenieMemoryLearner")
+  avatarConfiguration AvatarConfiguration? @relation("AvatarConfigurationLearner")
 
   circleMemberships CircleMembership[] @relation("CircleMembershipUser")
 
@@ -1102,6 +1103,47 @@ model GenieMemory {
   @@map("genie_memories")
 }
 
+/// Architecture Spec Part Four names this table in full: "AvatarConfiguration
+/// ... one row per learner's Genie: the currently locked set of curated 3D
+/// piece IDs ... and the animation-state version in use; and voice_id ...
+/// write-once, set at the Reveal and never updated by any later Season or
+/// Turning process, application-layer and database-constrained against
+/// modification after that first write." It did not exist in this schema
+/// before this task -- Phase 0 through Phase 2 built only what each phase's
+/// own scope named, and no prior phase's scope named this table. Built here
+/// deliberately minimal: only `voiceId` and the columns needed to prove it
+/// write-once, per this task's own instruction to build "not the whole
+/// pipeline, just the gating and the middle tier's scaffolding." The curated
+/// 3D piece IDs and animation-state version are real thirteen-plus-tier
+/// pipeline detail (avatar rendering) this task's own non-goals exclude --
+/// adding placeholder columns for them now, without the real asset/vendor
+/// design that pipeline needs, would risk exactly the wrong-guess retrofit
+/// this project has consistently avoided elsewhere. Extend this model when
+/// the thirteen-plus tier's own pipeline slice is actually built, once its
+/// separate legal briefing (`MY GENIE VOICE PIPELINE — LEGAL BRIEFING FOR
+/// COUNSEL.md`) is answered.
+model AvatarConfiguration {
+  id String @id @default(cuid())
+
+  learnerUserId String @unique @map("learner_user_id")
+
+  /// Write-once. Null until the thirteen-plus tier's Reveal sets it for the
+  /// first (and only) time; the RLS `avatar_configurations_update_never`
+  /// migration comment explains why no UPDATE grant exists for this table
+  /// at all rather than a narrower "only when currently null" policy -- this
+  /// task builds no code path that ever sets it, so there is nothing yet to
+  /// carve an exception for.
+  voiceId      String?   @map("voice_id")
+  voiceIdSetAt DateTime? @map("voice_id_set_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  learner User @relation("AvatarConfigurationLearner", fields: [learnerUserId], references: [id], onDelete: Cascade)
+
+  @@map("avatar_configurations")
+}
+
 // ---------------------------------------------------------------------------
 // AI GATEWAY MODULE (SKELETON)
 // Architecture Spec Part Three: "AI Engine -> `ai-gateway` -- Hosts and governs
@@ -1164,19 +1206,39 @@ model AgentDefinition {
   /// code."
   modelIdentifier String @map("model_identifier")
 
-  /// Architecture Spec Part Five, "A capability floor beneath the age of five":
-  /// for My Genie specifically, live speech-to-text input and real-time voice
-  /// synthesis are gated on learner age "at the AgentDefinition level ...
-  /// enforced ... by what the gateway does not expose, not by a prompt
-  /// instruction." Null means no floor applies to this agent. This column is
-  /// the structural hook Phase 1's actual gateway logic will read; Phase 0
-  /// only needs the column to exist and be populated correctly on My Genie's
-  /// row, since Phase 1 builds the pipeline the floor gates.
+  /// Architecture Spec Part Five, "A capability floor beneath the age of
+  /// five" -- revised 2026-08-20 (Fourteenth revision note) from a single
+  /// gate into the first of two thresholds in a three-tier design. Below
+  /// this age, My Genie's tool allowlist excludes live speech-to-text and
+  /// voice-synthesis entirely; the gateway serves pre-authored content
+  /// instead. Null means no floor applies to this agent. See
+  /// `voiceSynthesisMinimumAge` below for the second threshold the
+  /// Fourteenth revision note added.
   minimumLearnerAge Int? @map("minimum_learner_age")
 
+  /// The second of the three-tier design's two thresholds (Architecture
+  /// Spec Part Five, paragraphs following the Fourteenth/Fifteenth revision
+  /// notes; Blueprint 07 Part Six). Between `minimumLearnerAge` and this
+  /// age, live speech-to-text is exposed but real-time voice synthesis and
+  /// the `AvatarConfiguration.voiceId` write are not -- the gateway replies
+  /// in text only. At and above this age, the full pipeline applies,
+  /// including the one-time voice lock. Null means this agent has no
+  /// middle tier at all (every other agent besides My Genie). Two separate
+  /// nullable Int fields, not one struct/enum, deliberately -- Part Five is
+  /// explicit the two gates "rest on different kinds of reasoning and
+  /// should not be conflated" (five is developmental, thirteen is legal,
+  /// COPPA's own line for a child), so collapsing them into one tier concept
+  /// at the schema level would blur a distinction the governing text is
+  /// careful to keep separate. See src/modules/ai-gateway/my-genie-tool-
+  /// gating.ts for the gateway logic these two fields drive.
+  voiceSynthesisMinimumAge Int? @map("voice_synthesis_minimum_age")
+
   /// Phase 0: a configuration record, not a live integration (Part Nine).
-  /// Deliberately defaulted to false -- flipping this on is a Phase 1 decision,
-  /// not implied by this row existing.
+  /// Deliberately defaulted to false -- flipping this on is a later
+  /// decision, not implied by this row existing. Per the consistency
+  /// decision every phase since Phase 0 has followed: every AgentDefinition
+  /// row stays isActive: false until a dedicated slice activates them
+  /// together, not one at a time by whichever finished first.
   isActive Boolean @default(false) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")

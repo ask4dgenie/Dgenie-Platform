@@ -1,7 +1,7 @@
 {
   "vault": "DGENIE MODEL SCHOOLS",
   "sourceOfTruth": "GOVERNANCE DOCUMENTS/PLATFORM ARCHITECTURE AND WORKFLOW SPECIFICATION.md, Part Nine, and OPERATIONAL MANUALS/PLATFORM ARCHITECTURE AND BUILD ROADMAP.md, Part 5 — this manifest is a status board over that governance, never the other way around",
-  "lastMeaningfulUpdate": "2026-08-19",
+  "lastMeaningfulUpdate": "2026-08-21",
   "updateInstructions": "Edit only the \"status\" (and optionally \"note\") field on a task when real work happens. Valid statuses: not-started, in-progress, complete, blocked. Do not add, remove, or reorder tasks without checking them against the governing documents first. The server re-reads this file on every request, so a saved edit shows up the next time the dashboard polls, no restart needed.",
   "phases": [
     {
@@ -77,16 +77,28 @@
           "note": "CertificationRecord's certifying-actor FK has no path from ai-gateway/AgentInteraction (separate id space) + certification_records_insert_mentor RLS policy re-resolves an active MENTOR role at write time. src/modules/assessment/certify-genius-level.ts. Assessment Assistant's automated scanning deferred, per scope."
         },
         {
-          "id": "my-genie-full-pipeline",
-          "label": "My Genie full pipeline — 3D avatar, one permanent voice, speech-to-text input, age-five capability floor enforced at the AgentDefinition level",
+          "id": "my-genie-under-five-floor",
+          "label": "My Genie — age-five capability floor (no live speech-to-text, no voice synthesis) enforced at the AgentDefinition/gateway level",
+          "status": "complete",
+          "note": "Live since Phase 0: AgentDefinition.minimumLearnerAge: 5 plus resolveMyGenieTier (src/modules/ai-gateway/my-genie-tool-gating.ts) exclude both live_speech_to_text and live_voice_synthesis below that age, enforced by what the gateway does not expose per Architecture Spec Part Five, not by prompt instruction. No pipeline behind either tool exists yet regardless (isActive: false)."
+        },
+        {
+          "id": "my-genie-five-to-thirteen-tier",
+          "label": "My Genie 5–13 tier — live speech-to-text exposed (transcript only, audio discarded instantly), no voice synthesis, no AvatarConfiguration.voiceId write",
+          "status": "in-progress",
+          "note": "Build-side work complete and verified: gateway tool-allowlist narrowing (resolveEffectiveToolAllowlist), a stubbed STT interface (no real Deepgram call — DPA not yet signed), transcribeFiveToThirteenTier's audio-discard guarantee proven by an adversarial 'leaky provider' test plus a recursive buffer-reachability scan (src/modules/ai-gateway/five-to-thirteen-transcript-service.test.ts), diarize/mip_opt_out hardcoded via TypeScript literal types + Object.freeze (not a configurable default), and an LLM system-prompt guardrail against soliciting identifying details via voice, with a secondary output-side regex heuristic explicitly documented as an imperfect backstop, not a substitute (src/modules/ai-gateway/my-genie-tier-guardrails.ts). NOT marked complete: 2 of the 4 counsel-named prerequisites in OPERATIONAL MANUALS/MY GENIE 5-12 TIER — TRANSIENT VOICE INPUT LEGAL BRIEFING FOR COUNSEL.md remain outstanding and are Duncan's own open items, not build work — see the openBlockers entry 'my-genie-five-to-thirteen-remaining-prerequisites'."
+        },
+        {
+          "id": "my-genie-thirteen-plus-pipeline",
+          "label": "My Genie 13+ tier — full pipeline: 3D avatar, one-time permanent voice lock (AvatarConfiguration.voiceId), real-time voice synthesis",
           "status": "blocked",
-          "note": "Held by Duncan 2026-08-17 pending M3 (COPPA/biometric-data review) resolution. Not part of the first Phase 1 kickoff."
+          "note": "Held by Duncan 2026-08-17 pending its own separate legal review (M3/COPPA biometric-data question, parental consent for ages 13-17 per the Architecture Spec's Eighteenth revision note) — see OPERATIONAL MANUALS/MY GENIE VOICE PIPELINE -- LEGAL BRIEFING FOR COUNSEL.md, a different and still-fully-open document from the 5-12 tier's own briefing. AvatarConfiguration table exists (schema/gating scaffolding only, this task); no write path, no TTS integration, no avatar rendering."
         },
         {
           "id": "teacher-assistant-agent",
           "label": "Teacher Assistant agent live",
-          "status": "not-started",
-          "note": "Deferred alongside my-genie-full-pipeline in the first Phase 1 kickoff, to keep the two live-agent entities together; not itself blocked by M3."
+          "status": "complete",
+          "note": "A real AgentDefinition row (Blueprint 14 Section Four, Agent Two content, verbatim), seeded and verified live — isActive: false, same consistency decision already applied to Parent Companion in Phase 2: no agent has gone live anywhere in this build, so Teacher Assistant doesn't go live first, ahead of My Genie. Activates alongside the deferred-agent slice, not before it."
         },
         {
           "id": "messaging-slice-mentor-sessions",
@@ -352,6 +364,11 @@
       "id": "three-missing-tech-specs",
       "label": "Three named Technical Specifications don't exist yet.",
       "detail": "AI Governance Technical Compliance Specification, full Data Model Reference, API and Integration Reference — all named High priority in the Architecture Spec's own Recommendations table."
+    },
+    {
+      "id": "my-genie-five-to-thirteen-remaining-prerequisites",
+      "label": "My Genie 5–13 tier: 2 of 4 counsel-named prerequisites remain outstanding — both Duncan's own open items, not build work.",
+      "detail": "OPERATIONAL MANUALS/MY GENIE 5-12 TIER — TRANSIENT VOICE INPUT LEGAL BRIEFING FOR COUNSEL.md names four remaining action items before this tier is shippable. Two are satisfied by this build: hardcoded diarize=false/mip_opt_out=true (TypeScript literal types + Object.freeze, src/modules/ai-gateway/five-to-thirteen-transcript-service.ts) and an LLM system-prompt guardrail against soliciting identifying details via voice (src/modules/ai-gateway/my-genie-tier-guardrails.ts). Two remain open and are Duncan's/legal's own items, not build work: (1) a countersigned Deepgram DPA — no real vendor call exists in this codebase, only a stubbed STT interface; (2) a privacy-policy update reflecting this tier's data handling. Counsel has already confirmed no separate biometric consent is needed for this tier (transcription-based, not voiceprint/identification-based) — that finding is not in question; only the DPA and privacy-policy items are outstanding."
     },
     {
       "id": "devils-advocate-m3-m6-m8",
