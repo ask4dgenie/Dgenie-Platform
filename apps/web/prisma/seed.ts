@@ -1,5 +1,6 @@
 import { myGenieDefinition } from "../src/modules/ai-gateway/my-genie-definition";
 import { parentCompanionDefinition } from "../src/modules/ai-gateway/parent-companion-definition";
+import { teacherAssistantDefinition } from "../src/modules/ai-gateway/teacher-assistant-definition";
 import { seedCircle, seedNationalCommunity, seedRegion } from "../src/modules/community/community-seed";
 import {
   discoveryProjectPlaybook,
@@ -157,12 +158,29 @@ async function seedCommunityStructure() {
   });
 }
 
+/**
+ * This task's own seed: Teacher Assistant's AgentDefinition (Blueprint 14
+ * Section Four, Agent Two), `isActive: false` -- see src/modules/ai-gateway/
+ * teacher-assistant-definition.ts's own comment for the consistency
+ * reasoning behind the deferral, and seedMyGenie's own update above (now
+ * carrying a populated `toolAllowlist` and `voiceSynthesisMinimumAge`) for
+ * the three-tier gating schema this task also adds.
+ */
+async function seedTeacherAssistant() {
+  await prisma.agentDefinition.upsert({
+    where: { agentKey: teacherAssistantDefinition.agentKey },
+    create: teacherAssistantDefinition,
+    update: teacherAssistantDefinition,
+  });
+}
+
 async function main() {
   await seedMyGenie();
   await seedGeniusDevelopmentDomain();
   await seedMentorBootstrap();
   await seedParentCompanion();
   await seedCommunityStructure();
+  await seedTeacherAssistant();
 }
 
 main()
